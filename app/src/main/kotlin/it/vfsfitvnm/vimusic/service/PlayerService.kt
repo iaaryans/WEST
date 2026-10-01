@@ -58,6 +58,7 @@ import androidx.media3.exoplayer.analytics.PlaybackStatsListener
 import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink.DefaultAudioProcessorChain
+import it.vfsfitvnm.vimusic.utils.WestAnalytics
 import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import androidx.media3.exoplayer.audio.SonicAudioProcessor
@@ -344,8 +345,11 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
 
         if (mediaItem == null) {
             bitmapProvider.listener?.invoke(null)
-        } else if (mediaItem.mediaMetadata.artworkUri == bitmapProvider.lastUri) {
-            bitmapProvider.listener?.invoke(bitmapProvider.lastBitmap)
+        } else {
+            WestAnalytics.trackEvent("song_played")
+            if (mediaItem.mediaMetadata.artworkUri == bitmapProvider.lastUri) {
+                bitmapProvider.listener?.invoke(bitmapProvider.lastBitmap)
+            }
         }
 
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
