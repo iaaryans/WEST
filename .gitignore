@@ -1,0 +1,27 @@
+*.iml
+.gradle/
+/local.properties
+local.properties
+.idea/
+.DS_Store
+/build/
+build/
+*/build/
+captures/
+.externalNativeBuild
+.cxx/
+*.hprof
+
+# Built APKs & Bundles
+*.apk
+*.aab
+output-metadata.json
+
+# Signing Keystores (keep secure)
+*.keystore
+*.jks
+
+# Temporary and log files
+*.log
+logcat*.txt
+build_error.txt
