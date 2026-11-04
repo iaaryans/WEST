@@ -166,7 +166,14 @@ fun Thumbnail(
                         else -> "An unknown playback error has occurred"
                     }
                 },
-                onDismiss = player::prepare
+                onDismiss = {
+                    if (player.hasNextMediaItem()) {
+                        player.seekToNextMediaItem()
+                        player.prepare()
+                    } else {
+                        player.prepare()
+                    }
+                }
             )
         }
     }

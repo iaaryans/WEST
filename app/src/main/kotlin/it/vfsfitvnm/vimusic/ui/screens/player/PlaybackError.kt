@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -63,7 +62,7 @@ fun PlaybackError(
                 .align(Alignment.TopCenter)
         ) {
             BasicText(
-                text = remember { messageProvider() },
+                text = messageProvider(),
                 style = typography.xs.center.medium.color(PureBlackColorPalette.text),
                 modifier = Modifier
                     .background(Color.Black.copy(0.4f))

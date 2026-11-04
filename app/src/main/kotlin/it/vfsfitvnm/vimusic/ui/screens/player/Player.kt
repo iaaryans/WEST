@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -288,6 +290,24 @@ fun Player(
                 modifier = containerModifier
                     .padding(top = 32.dp)
             ) {
+                // Back button for landscape
+                Box(
+                    modifier = Modifier
+                        .padding(start = 8.dp, top = 8.dp)
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(colorPalette.background2)
+                        .clickable { layoutState.collapseSoft() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    IconButton(
+                        icon = R.drawable.chevron_down,
+                        color = colorPalette.text,
+                        onClick = { layoutState.collapseSoft() },
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
@@ -313,6 +333,31 @@ fun Player(
                 modifier = containerModifier
                     .padding(top = 54.dp)
             ) {
+                // Back button row at top
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(colorPalette.background2)
+                            .clickable { layoutState.collapseSoft() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        IconButton(
+                            icon = R.drawable.chevron_down,
+                            color = colorPalette.text,
+                            onClick = { layoutState.collapseSoft() },
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier

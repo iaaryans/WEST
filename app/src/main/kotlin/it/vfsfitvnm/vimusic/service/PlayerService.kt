@@ -749,15 +749,15 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         return CacheDataSource.Factory().setCache(cache).apply {
             setUpstreamDataSourceFactory(
                 DefaultHttpDataSource.Factory()
-                    .setConnectTimeoutMs(16000)
-                    .setReadTimeoutMs(8000)
+                    .setConnectTimeoutMs(30000)
+                    .setReadTimeoutMs(16000)
                     .setUserAgent("Mozilla/5.0 (Windows NT 10.0; rv:91.0) Gecko/20100101 Firefox/91.0")
             )
         }
     }
 
     private fun createDataSourceFactory(): DataSource.Factory {
-        val chunkLength = 512 * 1024L
+        val chunkLength = 512 * 1024L * 4
         val ringBuffer = RingBuffer<Pair<String, Uri>?>(2) { null }
 
         return ResolvingDataSource.Factory(createCacheDataSource()) { dataSpec ->
@@ -868,7 +868,7 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
             .setAudioProcessorChain(
                 DefaultAudioProcessorChain(
                     emptyArray(),
-                    SilenceSkippingAudioProcessor(2_000_000, 20_000, 256),
+                    SilenceSkippingAudioProcessor(2_000_000L, 20_000L, 256),
                     SonicAudioProcessor()
                 )
             )

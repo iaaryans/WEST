@@ -375,13 +375,14 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                             playerBottomSheetState.dismiss()
                         }
                     } else {
-                        if (playerBottomSheetState.isDismissed) {
-                            if (launchedFromNotification) {
-                                intent.replaceExtras(Bundle())
-                                playerBottomSheetState.expand(tween(700))
-                            } else {
-                                playerBottomSheetState.collapse(tween(700))
-                            }
+                        if (launchedFromNotification && playerBottomSheetState.isDismissed) {
+                            intent.replaceExtras(Bundle())
+                            playerBottomSheetState.expand(tween(700))
+                        } else if (!playerBottomSheetState.isDismissed && !playerBottomSheetState.isCollapsed && !launchedFromNotification) {
+                            // Player was expanded from previous session - collapse it to show home screen
+                            playerBottomSheetState.collapse(tween(700))
+                        } else if (playerBottomSheetState.isDismissed && !launchedFromNotification) {
+                            playerBottomSheetState.collapse(tween(700))
                         }
                     }
 
