@@ -1,27 +1,30 @@
-*.iml
+# Android build files
+**/build/
 .gradle/
-/local.properties
-local.properties
 .idea/
-.DS_Store
-/build/
-build/
-*/build/
-captures/
-.externalNativeBuild
-.cxx/
-*.hprof
-
-# Built APKs & Bundles
 *.apk
 *.aab
-output-metadata.json
 
-# Signing Keystores (keep secure)
+# Local configuration
+local.properties
+
+# Signing credentials
 *.keystore
 *.jks
+*.p12
 
-# Temporary and log files
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# IDE and OS files
+.DS_Store
+Thumbs.db
+
+# Logs
 *.log
-logcat*.txt
-build_error.txt
+
+# Temporary files
+*.tmp
+*.bak
