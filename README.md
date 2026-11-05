@@ -1,407 +1,249 @@
- <div align="center">
+<div align="center">
   <img src="./app/src/main/logo.png" width="128" height="128" alt="WEST logo" />
   <h1>WEST</h1>
-  <p><b>Straight Outta The Cloud.</b></p>
-  <p>An independently branded Android music player for YouTube Music, reworked from <a href="https://github.com/vfsfitvnm/ViMusic">ViMusic</a>.</p>
-  <p>
-    <img alt="Status: beta" src="https://img.shields.io/badge/status-beta-4f6fff" />
-    <img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue" />
-    <img alt="Platform: Android" src="https://img.shields.io/badge/platform-Android%205.0%2B-3ddc84" />
-    <img alt="Language: Kotlin" src="https://img.shields.io/badge/language-Kotlin-7F52FF?logo=kotlin&logoColor=white" />
-  </p>
+  <p><b>An Android music client for YouTube Music, forked from ViMusic.</b></p>
 </div>
 
 ---
 
-## About
+## 1. Introduction
 
-WEST is a modified version of [ViMusic](https://github.com/vfsfitvnm/ViMusic), originally developed by [vfsfitvnm](https://github.com/vfsfitvnm) and its contributors.
+WEST is an Android application (Kotlin, Jetpack Compose) that searches and streams music from YouTube Music, with local playlists, a persistent queue, lyrics and an audio cache. It is a modified version of [ViMusic](https://github.com/vfsfitvnm/ViMusic) by vfsfitvnm and contributors, released under GPL-3.0.
 
-The project started with a practical goal: address parts of the original application that had become unreliable, particularly music playback and the loading of album and artist pages.
+> **Naming note.** The repository is `iaaryans/WEST`. The Gradle root project is still named `ViMusic`, and the Kotlin package and application ID are still `it.vfsfitvnm.vimusic`, inherited from upstream. "VIMUSIC" in older notes refers to this same codebase.
 
-WEST builds on that foundation with a reworked YouTube Music playback-resolution flow, updated InnerTube parsers and models, Android compatibility changes, and its own application branding.
+The project is beta software (`versionName 0.5.4`, `versionCode 20`). This document describes what is present in the source at commit `8854fbb`. Nothing here was verified by running the app on a device.
 
-It is developed as an independently branded Android application using Kotlin and Jetpack Compose.
+## 2. Overview
 
-**WEST is beta software.** It is under active development and has not been tested on every device or Android version. Playback availability depends on external services and may vary.
+| Item | Value | Source |
+| --- | --- | --- |
+| Application ID | `it.vfsfitvnm.vimusic` (`.debug` suffix for debug builds) | `app/build.gradle.kts` |
+| Version | 0.5.4 (code 20) | `app/build.gradle.kts` |
+| minSdk / targetSdk / compileSdk | 21 / 34 / 34 | `app/build.gradle.kts` |
+| Modules | 7 (`app` plus six libraries) | `settings.gradle.kts` |
+| Kotlin source files | 192 | `git ls-files` |
+| Database | Room, schema version 23 | `app/schemas/.../23.json` |
+| License | GPL-3.0 | `LICENSE` |
 
-> WEST is a derivative work of ViMusic. Original ViMusic code remains the work of its respective authors and contributors. WEST and its modifications are distributed under GPL-3.0. See [License and Attribution](#license-and-attribution).
+## 3. Features
 
-## What WEST Changes
+Status reflects code inspection only. "Implemented" means a code path exists and is wired to UI or services. It does not mean the feature has been tested against live YouTube responses.
 
-Compared with the ViMusic v0.5.4 codebase used as its foundation, WEST introduces changes across playback, browsing, Android integration, and application identity.
+| Feature | Status | Main files |
+| --- | --- | --- |
+| Search songs, videos, albums, artists, playlists | Implemented | `ui/screens/search/*`, `ui/screens/searchresult/*`, `innertube/.../requests/SearchPage.kt` |
+| Search suggestions and local search history | Implemented | `innertube/.../requests/SearchSuggestions.kt`, `OnlineSearch.kt`, `models/SearchQuery.kt` |
+| Streaming playback via Media3/ExoPlayer | Implemented, depends on undocumented YouTube behaviour (see Limitations) | `service/PlayerService.kt`, `innertube/.../requests/Player.kt` |
+| Background playback, notification, media session | Implemented | `service/PlayerService.kt` |
+| Persistent queue (restored on start) | Implemented | `PlayerService.kt` (`maybeRestorePlayerQueue`), `Database.kt` |
+| Queue reordering, playlist reordering | Implemented | `compose-reordering/`, `ui/screens/player/Queue.kt`, `LocalPlaylistSongs.kt` |
+| Local playlists, favorites, bookmarked albums/artists | Implemented | `Database.kt`, `ui/screens/home/*`, `ui/screens/localplaylist/*` |
+| Audio disk cache with size limit | Implemented | `PlayerService.kt` (`SimpleCache`), `enums/ExoPlayerDiskCacheMaxSize.kt`, `CacheSettings.kt` |
+| Lyrics: YouTube Music, KuGou synced lyrics, manual editing | Implemented | `ui/screens/player/Lyrics.kt`, `kugou/`, `innertube/.../requests/Lyrics.kt` |
+| Sleep timer | Implemented | `PlayerService.kt`, `MediaItemMenu.kt` |
+| Skip silence, volume normalization | Implemented | `PlayerService.kt`, `PlayerSettings.kt` |
+| Radio / related songs | Implemented | `utils/YoutubeRadio.kt`, `NextPage.kt`, `RelatedPage.kt` |
+| Themes: light, dark, dynamic (album-art palette) | Implemented | `ui/styling/*`, `MainActivity.kt`, `androidx.palette` |
+| Database backup and restore (file based) | Implemented | `ui/screens/settings/DatabaseSettings.kt` |
+| Android Auto media browser | Partially: service exists but is disabled in the manifest and toggled from Settings > Other | `service/PlayerMediaBrowserService.kt`, `OtherSettings.kt` |
+| Open YouTube / YouTube Music links | Implemented (intent filters) | `AndroidManifest.xml`, `MainActivity.kt` |
+| "Stats for nerds" overlay | Implemented | `ui/screens/player/StatsForNerds.kt` |
+| Anonymous usage analytics (Aptabase) | Implemented, enabled in code with no in-app opt-out | `WestAnalytics.kt`, `MainApplication.kt` |
+| Offline downloads, account login, automated tests | Not present | none |
 
-| Area | Changes |
-|---|---|
-| Playback resolution | Reworked InnerTube player request flow. Uses a VisionOS client first, with Android VR fallback and visitor-data refresh handling. |
-| Browsing | Updated InnerTube parsers and response models for albums, artists, playlists, lyrics, and related music. |
-| Android compatibility | Updated dynamic broadcast receiver registration, media playback foreground-service permission, and Android SDK configuration. |
-| Application identity | WEST branding, launcher icons, logo, About screen, and release configuration. |
-| Analytics | Aptabase-based application telemetry. See [Privacy](#privacy) for details. |
-| CI | GitHub Actions workflow for building and uploading the debug APK. |
+## 4. Screenshots
 
-These changes are based on a comparison of the WEST repository with the upstream ViMusic v0.5.4 codebase. WEST retains substantial inherited functionality and components, alongside modifications to selected files and modules.
+Upstream-derived screenshots exist in `fastlane/metadata/android/en-US/images/phoneScreenshots/` (`1.jpg` to `6.jpg`). They are not embedded here because they may not reflect the current WEST UI. The launcher logo is at `app/src/main/logo.png`.
 
-## Features
+## 5. Technology stack
 
-The following features are present in the current source code. Many originate from ViMusic and are not necessarily individually re-tested in every WEST release.
+Versions are taken from `settings.gradle.kts`, `build.gradle.kts` and module build files.
 
-### Music Discovery
-- Search YouTube Music for songs, albums, artists, videos, and playlists.
-- Browse album and artist pages.
-- Explore playlists and related music.
-- Open supported YouTube and YouTube Music links.
+| Layer | Technology | Version |
+| --- | --- | --- |
+| Language | Kotlin | 1.7.20 |
+| Build | Android Gradle Plugin / Gradle wrapper | 7.3.0 / 7.4 |
+| UI | Jetpack Compose (foundation, ui, ripple) | 1.3.0-rc01 (compiler 1.3.2) |
+| Activity | `activity-compose` | 1.7.0-alpha01 |
+| Images | Coil | 2.2.2 |
+| Playback | Media3 ExoPlayer | 1.0.0-beta03 |
+| Persistence | Room (kapt) | 2.5.0-beta01 |
+| Networking | Ktor client (OkHttp engine), plus `HttpURLConnection` in places | 2.1.2 |
+| Serialization | kotlinx.serialization | plugin tied to Kotlin 1.7.20 |
+| Concurrency | kotlinx.coroutines | 1.6.4 |
+| Misc | Palette 1.0.0, compose-shimmer 1.0.3, Brotli decoder 0.1.2, desugar_jdk_libs 1.1.5 | as listed |
+| Not used | Dependency injection framework, Navigation Compose, ViewModel, DataStore | none found |
 
-### Playback
-- Background playback.
-- Playback notifications and media controls.
-- Persistent playback queue.
-- Queue and playlist reordering.
-- Audio caching for repeat playback.
-- Sleep timer.
-- Skip silence.
-- Loudness normalization.
+## 6. Architecture overview
 
-### Library and Personalization
-- Local playlists.
-- Bookmarked artists and albums.
-- Lyrics, including synchronized lyrics.
-- Lyrics editing.
-- Light and dark themes.
-- Dynamic theme support.
+A single-activity app. `MainActivity` hosts all Compose screens and binds to `PlayerService`, a foreground service that owns the `ExoPlayer`, `MediaSession` and the stream cache. UI state lives in composables, `SharedPreferences` and Room `Flow`s. There are no ViewModels or repository classes: screens call the static `Database` DAO and the `Innertube` object directly.
 
-### Android Integration
-- Android MediaSession integration.
-- Media browser service.
-- Android Auto media-browser support.
-- Background media playback through Android services.
+### Module dependencies
 
-## Download
-
-<p align="center">
-  <a href="https://github.com/iaaryans/WEST/releases">
-    <img src="https://img.shields.io/badge/Download-Latest%20Release-4f6fff?style=for-the-badge&logo=android" alt="Download WEST" />
-  </a>
-</p>
-
-Download WEST from the official GitHub Releases page:
-
-**[GitHub Releases — WEST](https://github.com/iaaryans/WEST/releases)**
-
-### Release Information
-
-| Detail | Value |
-|---|---|
-| APK | `West-Release.apk` |
-| Reported file size | 2.6 MB |
-| SHA-256 | `948068e841ec5decb87ab8fb3140ea7810529201351e6ace90102391dae4d532` |
-| Source tag | [`v1.0.0`](https://github.com/iaaryans/WEST/tree/v1.0.0) |
-
-Verify the downloaded APK using:
-
-```bash
-sha256sum West-Release.apk
+```mermaid
+graph TD
+    app --> compose-persist
+    app --> compose-routing
+    app --> compose-reordering
+    app --> innertube
+    app --> kugou
+    innertube --> ktor-client-brotli
 ```
 
-On Windows PowerShell:
+### Runtime components
 
-```powershell
-Get-FileHash .\West-Release.apk -Algorithm SHA256
+```mermaid
+graph LR
+    UI[MainActivity + Compose screens] -- bindService --> PS[PlayerService]
+    UI --> DB[(Room: data.db)]
+    UI --> IT[Innertube client]
+    UI --> KG[KuGou lyrics]
+    PS --> EXO[ExoPlayer]
+    PS --> MS[MediaSession + notification]
+    PS --> DB
+    EXO --> RDS[ResolvingDataSource]
+    RDS --> CACHE[(SimpleCache)]
+    RDS --> PL[Innertube.player]
+    CACHE --> NET[(googlevideo streams)]
+    MBS[PlayerMediaBrowserService] -. Android Auto .-> PS
+    APP[MainApplication] --> DB
+    APP --> AN[WestAnalytics]
 ```
 
-Compare the output with the SHA-256 value above before installing.
+### Playback flow
 
-**Installation note:** If you install the APK directly, Android may ask you to allow installation from your browser or file manager.
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as Compose UI
+    participant S as PlayerService
+    participant R as ResolvingDataSource
+    participant Y as YouTube player endpoint
+    U->>UI: Tap song
+    UI->>S: enqueue / play via Binder
+    S->>R: ExoPlayer requests data for videoId
+    alt range already cached
+        R-->>S: serve from SimpleCache
+    else not cached
+        R->>Y: VisionOS client request
+        Y-->>R: playability + formats
+        opt not OK
+            R->>Y: retry with fresh visitorData, then ANDROID_VR client
+        end
+        R-->>S: stream URL (512 KiB x 4 chunk ranges)
+    end
+    S-->>UI: player state, bitmap and error callbacks
+```
 
-## Privacy
+## 7. Project structure
 
-WEST does not currently include an account system or advertisements.
+```
+app/                  Application: UI, service, Room database, preferences
+  src/main/kotlin/it/vfsfitvnm/vimusic/
+    MainActivity.kt, MainApplication.kt, Database.kt
+    service/          PlayerService, PlayerMediaBrowserService, BitmapProvider
+    ui/               screens, components, items, styling
+    models/ enums/ utils/
+  schemas/            Exported Room schemas, versions 1 to 23
+innertube/            YouTube Music (InnerTube) client, models, parsers
+kugou/                KuGou lyrics provider
+compose-routing/      Route handling and transitions (from ViMusic)
+compose-reordering/   Drag-to-reorder lazy lists (from ViMusic)
+compose-persist/      Cross-config-change state persistence (from ViMusic)
+ktor-client-brotli/   Brotli content encoding for Ktor
+fastlane/metadata/    Store metadata, changelogs, screenshots
+.github/workflows/    android.yml (debug build)
+```
 
-### Local Data
-The application uses local persistence for data such as:
-- Playlists and bookmarks.
-- Playback queue.
-- Cached audio.
-- Locally stored music-related information.
+## 8. How it works
 
-### External Services
+1. `MainApplication.onCreate` initializes the Room database and the analytics helper, and configures the Coil image cache.
+2. `MainActivity` binds to `PlayerService`, applies the saved theme, and renders `HomeScreen` plus the bottom-sheet player. Routes are declared in `ui/screens/Routes.kt`.
+3. Browsing and search call `Innertube` request functions (`innertube/.../requests/`), whose response models are parsed into `Innertube.*Item` types.
+4. Playing an item hands a Media3 `MediaItem` to the service. Stream URLs are resolved lazily in `createDataSourceFactory()` and cached in `SimpleCache`.
+5. Playback statistics, queue contents, formats and lyrics are stored in Room.
 
-Music discovery, metadata, and playback requests use YouTube Music and related external services.
+## 9. Prerequisites
 
-### Analytics
+- JDK 17 (used by CI, `.github/workflows/android.yml`)
+- Android SDK with platform 34 and build-tools 34.0.0 (as stated by the previous README; not independently checked)
+- Network access to Google Maven, Maven Central, JitPack, and the Gradle distribution host
 
-The current implementation integrates [Aptabase](https://aptabase.com) for application telemetry.
-
-Events currently include:
-- `app_started`
-- `song_played`
-
-The telemetry implementation can include:
-- Device model.
-- Android version.
-- Application version and build information.
-- Locale.
-- Debug status.
-- Randomly generated session identifier.
-
-Analytics initialization is implemented in `MainApplication.kt`, and the analytics implementation is available at:
-
-[`WestAnalytics.kt`](./app/src/main/kotlin/it/vfsfitvnm/vimusic/utils/WestAnalytics.kt)
-
-**Important:** The current inspected implementation does not expose a user-facing analytics opt-out setting. The analytics key is configured in application source code; removing or disabling analytics initialization requires a source-code change and a new build.
-
-The project should not be described as telemetry-free or fully anonymous while these events are enabled.
-
-## Build From Source
-
-Want to explore the code or build WEST yourself? Follow these steps.
-
-### Requirements
-
-- Android Studio.
-- JDK 17.
-- Android SDK.
-- Android SDK Build Tools 34.0.0.
-- Git.
-
-### Clone the Repository
+## 10. Build and run
 
 ```bash
 git clone https://github.com/iaaryans/WEST.git
-
 cd WEST
+./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleRelease      # needs a release keystore, see below
 ```
 
-### Build Debug APK
+CI runs `./gradlew assembleDebug` only. These commands match the repository's workflow; no build was executed while writing this document.
 
-**Windows:**
+The Gradle wrapper downloads Gradle 7.4 from a Tencent Cloud mirror (`gradle/wrapper/gradle-wrapper.properties`) with no checksum pin. If that host is unreachable, edit the URL locally.
 
-```powershell
-gradlew.bat assembleDebug
-```
+Install the debug APK with `adb install app/build/outputs/apk/debug/app-debug.apk`, or open the project in Android Studio and run the `app` configuration.
 
-**Linux / macOS:**
+## 11. Configuration
 
-```bash
-./gradlew assembleDebug
-```
+- **Release signing:** `app/build.gradle.kts` signs release builds only if `release.keystore` exists in the repository root. Provide `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` as environment variables. Keystores are git-ignored. See TECHNICAL_AUDIT.md finding H-1 about insecure fallback values in that file.
+- **Analytics:** controlled by the `WestAnalytics.initialize(...)` call in `MainApplication.kt`. Remove that call to build without telemetry.
+- **Runtime settings** (stored in `SharedPreferences`, keys in `utils/Preferences.kt`): theme, thumbnail roundness, cache sizes, loop modes, skip silence, normalization, persistent queue, Android Auto toggle, invincibility mode.
 
-### Build Release APK
+## 12. Permissions
 
-```bash
-./gradlew assembleRelease
-```
+| Permission | Purpose |
+| --- | --- |
+| `INTERNET` | Streaming, metadata, lyrics, analytics |
+| `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` | Playback service (declared type `mediaPlayback`) |
+| `POST_NOTIFICATIONS` | Declared; no runtime request was found in the code (see audit M-3) |
+| `WAKE_LOCK` | Keep playing with screen off |
+| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Optional "invincibility" mode, requested from Settings > Other |
 
-The generated APKs are located under:
+`allowBackup` is `false`.
 
-```text
-app/build/outputs/apk/
-```
+## 13. Testing
 
-### Release Signing
+There is no meaningful test coverage. `innertube/src/test/kotlin/Test.kt` and `kugou/src/test/kotlin/Test.kt` each contain an empty JUnit 4 test, and `app/` has no `test` or `androidTest` directory. CI does not run tests or lint.
 
-Release signing is configured in `app/build.gradle.kts`.
+## 14. Release and deployment
 
-The build configuration supports the following environment variables:
+Release builds enable R8 minification and resource shrinking (`app/build.gradle.kts`, `app/proguard-rules.pro`) and the build can emit a universal APK. Distribution is manual; no store publishing is configured. The earlier README lists an APK checksum and a `v1.0.0` tag. Neither the APK nor that tag could be verified from the repository contents, so treat them as unverified.
 
-```text
-KEYSTORE_PASSWORD
-KEY_ALIAS
-KEY_PASSWORD
-```
+## 15. Security and privacy
 
-Before producing a release build:
+- Playlists, history, queue and caches are stored locally in the app's private storage.
+- Requests go directly to YouTube/Google hosts, KuGou, and Aptabase (EU).
+- **Analytics are active in the current source.** `MainApplication.kt` initializes `WestAnalytics` with an embedded app key, and events `app_started` and `song_played` are sent with device model, OS version, app version, locale and a per-session ID. There is no in-app switch.
+- Debug-level logs include a prefix of resolved stream URLs (`PlayerService.kt`).
+- Details and other findings: [TECHNICAL_AUDIT.md](./TECHNICAL_AUDIT.md).
 
-1. Configure your own release keystore.
-2. Set the signing credentials through environment variables or a secure CI secret store.
-3. Remove insecure hardcoded fallback credentials from the build configuration.
-4. Never commit your keystore or passwords to Git.
+## 16. Current limitations
 
-**Security note:** The current build configuration contains fallback signing credentials. Review and replace those defaults before using it for a production release.
+- Playback relies on impersonating YouTube VisionOS and Android VR clients with hard-coded versions; changes on YouTube's side can break it without notice.
+- Toolchain and libraries are old, and several are pre-release (see section 5).
+- No automated tests; large classes such as `PlayerService.kt` (1,027 lines) and `Database.kt` (684 lines).
+- Application ID and package still use the upstream name, so it cannot coexist with ViMusic signed by another key.
+- Unofficial client; not affiliated with or endorsed by YouTube or Google.
 
-## Tech Stack
+## 17. Roadmap
 
-| Category | Technology |
-|---|---|
-| Language | Kotlin |
-| UI | Jetpack Compose |
-| Playback | AndroidX Media3 / ExoPlayer |
-| Database | Room |
-| Networking | Ktor and custom HTTP networking |
-| Asynchronous Processing | Kotlin Coroutines |
-| Image Loading | Coil |
-| Music Integration | YouTube Music InnerTube |
-| Lyrics Provider | Kugou |
-| Build System | Gradle |
-| CI | GitHub Actions |
+No roadmap exists in the repository. Suggested priorities are in [PROJECT_ANALYSIS.md](./PROJECT_ANALYSIS.md#9-recommended-improvements).
 
-## Project Structure
+## 18. Contributing
 
-```text
-WEST/
-│
-├── app/
-│   ├── Android application
-│   ├── Jetpack Compose UI
-│   ├── PlayerService
-│   ├── MediaSession integration
-│   ├── Room database
-│   └── Application logic
-│
-├── innertube/
-│   ├── YouTube Music InnerTube client
-│   ├── Player requests
-│   ├── Browse and search requests
-│   ├── Response parsers
-│   └── Music metadata models
-│
-├── kugou/
-│   └── Lyrics provider integration
-│
-├── compose-persist/
-│   └── Compose persistence utilities
-│
-├── compose-reordering/
-│   └── Drag-and-drop reordering
-│
-├── compose-routing/
-│   └── Navigation utilities
-│
-└── ktor-client-brotli/
-    └── Brotli support for Ktor
-```
+1. Fork and branch (`git checkout -b fix/short-description`).
+2. Keep changes focused and state the device and Android version you tested on.
+3. Open a pull request. Contributions are accepted under GPL-3.0.
 
-## Playback Architecture
+Bug reports use the template in `.github/ISSUE_TEMPLATE/bug_report.yaml`.
 
-WEST uses a custom playback-resolution flow to retrieve playable audio streams.
+## 19. License
 
-```text
-       User selects a song
-                |
-                v
-          PlayerService
-                |
-                v
-        Media3 ExoPlayer
-                |
-                v
-       ResolvingDataSource
-                |
-                v
-         InnerTube Player
-                |
-                v
-        VisionOS Client
-                |
-         Request fails?
-                |
-                v
-       Android VR Fallback
-                |
-                v
-       Audio Format Selection
-                |
-                v
-         ExoPlayer Playback
-```
+GPL-3.0, see [`LICENSE`](./LICENSE). WEST contains code by vfsfitvnm and ViMusic contributors, whose copyrights remain with them.
 
-The resolver requests playback information through YouTube Music's InnerTube interface, processes the response, and supplies the selected audio stream to ExoPlayer.
+## 20. Acknowledgements
 
-The implementation uses alternative client configurations to improve playback compatibility.
-
-**Technical limitation:** YouTube Music's InnerTube interface is undocumented and subject to change. Changes on the service side can affect playback, metadata retrieval, or browsing functionality.
-
-## Android Application Identity
-
-The current Kotlin package and Android application ID remain:
-
-```text
-it.vfsfitvnm.vimusic
-```
-
-This identifier is inherited from ViMusic.
-
-As a result, WEST may conflict with an existing ViMusic installation, particularly when the installed applications are signed with different keys.
-
-A WEST-specific application ID migration is a potential future improvement.
-
-## Continuous Integration
-
-WEST includes a GitHub Actions workflow that builds the Android debug APK.
-
-The current workflow:
-1. Checks out the repository.
-2. Sets up JDK 17.
-3. Executes the Gradle debug build.
-4. Uploads the generated APK as a workflow artifact.
-
-The existing workflow validates debug compilation. It does not currently provide comprehensive automated testing, lint validation, or release-build verification.
-
-## Roadmap
-
-Potential development priorities:
-
-- [ ] Introduce a WEST-specific Android application ID.
-- [ ] Upgrade Android SDK and dependency versions.
-- [ ] Improve playback resolver reliability and error diagnostics.
-- [ ] Expand automated unit and integration tests.
-- [ ] Add lint and static-analysis checks to CI.
-- [ ] Improve service and coroutine lifecycle management.
-- [ ] Introduce user-facing analytics controls.
-- [ ] Improve release signing and build security.
-- [ ] Expand developer documentation.
-
-## Contributing
-
-Contributions, bug reports, and suggestions are welcome.
-
-### How to Contribute
-
-1. Fork the repository.
-2. Create a feature or fix branch:
-
-   ```bash
-   git checkout -b fix/short-description
-   ```
-
-3. Make your changes and keep them focused.
-4. Build and test your changes.
-5. Mention the device and Android version used during testing.
-6. Submit a pull request with a clear description.
-
-By contributing, you agree that your contributions will be distributed under the project's GPL-3.0 license.
-
-## License and Attribution
-
-WEST is distributed under the **GNU General Public License v3.0 (GPL-3.0)**.
-
-See the [`LICENSE`](./LICENSE) file for the complete license text.
-
-### Original Project
-
-WEST is a derivative work based on [ViMusic](https://github.com/vfsfitvnm/ViMusic), originally developed by vfsfitvnm and its contributors.
-
-The original authors retain their respective copyrights in the original code. WEST's modifications and development are maintained by Aaryan, with project changes documented in the [Git commit history](https://github.com/iaaryans/WEST/commits/main).
-
-WEST does not claim ownership of the original ViMusic code or third-party components.
-
-### Disclaimer
-
-WEST is an independent community-developed project.
-
-It is not affiliated with, funded, authorized, or endorsed by YouTube, YouTube Music, Google LLC, Kugou, or the original ViMusic maintainers.
-
-All third-party names and trademarks belong to their respective owners.
-
-WEST does not host or distribute music content. Music discovery and playback depend on external services and their availability.
-
-Users are responsible for ensuring that their use of the application complies with applicable laws and the terms of the services they access.
-
----
-
-<div align="center">
-  <h3>WEST</h3>
-  <p><b>Straight Outta The Cloud.</b></p>
-  <p>Built with Kotlin. Driven by curiosity.</p>
-  <a href="https://github.com/iaaryans/WEST">GitHub Repository</a>
-</div>
+- [ViMusic](https://github.com/vfsfitvnm/ViMusic) by vfsfitvnm and contributors, the basis of this project.
+- Libraries listed in section 5.
