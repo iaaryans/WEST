@@ -241,11 +241,7 @@ Verify the download with `sha256sum West-v0.5.4-beta.apk`. Because the package I
 - The distributed beta APK is a debug build: larger, unoptimized, debuggable, and signed with the Android debug key.
 - Unofficial client; not affiliated with or endorsed by YouTube or Google.
 
-## 17. Roadmap
-
-No roadmap exists in the repository. Suggested priorities are in [PROJECT_ANALYSIS.md](./PROJECT_ANALYSIS.md#9-recommended-improvements).
-
-## 18. Contributing
+## 17. Contributing
 
 1. Fork and branch (`git checkout -b fix/short-description`).
 2. Keep changes focused and state the device and Android version you tested on.
@@ -253,7 +249,7 @@ No roadmap exists in the repository. Suggested priorities are in [PROJECT_ANALYS
 
 Bug reports use the template in `.github/ISSUE_TEMPLATE/bug_report.yaml`.
 
-## 19. License
+## 18. License
 
 GPL-3.0, see [`LICENSE`](./LICENSE). WEST contains code by vfsfitvnm and ViMusic contributors, whose copyrights remain with them.
 
