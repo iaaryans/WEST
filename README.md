@@ -253,7 +253,7 @@ Bug reports use the template in `.github/ISSUE_TEMPLATE/bug_report.yaml`.
 
 GPL-3.0, see [`LICENSE`](./LICENSE). WEST contains code by vfsfitvnm and ViMusic contributors, whose copyrights remain with them.
 
-## 20. Acknowledgements
+## 19. Acknowledgements
 
 - [ViMusic](https://github.com/vfsfitvnm/ViMusic) by vfsfitvnm and contributors, the basis of this project.
 - Libraries listed in section 5.
