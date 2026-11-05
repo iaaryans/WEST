@@ -12,7 +12,7 @@ WEST is an Android application (Kotlin, Jetpack Compose) that searches and strea
 
 > **Naming note.** The repository is `iaaryans/WEST`. The Gradle root project is still named `ViMusic`, and the Kotlin package and application ID are still `it.vfsfitvnm.vimusic`, inherited from upstream. "VIMUSIC" in older notes refers to this same codebase.
 
-The project is beta software (`versionName 0.5.4`, `versionCode 20`). This document describes what is present in the source at commit `8854fbb`. Nothing here was verified by running the app on a device.
+The project is beta software; the current release is v0.5.4 (`versionCode 20`). This document describes what is present in the source at commit `8854fbb`. Nothing here was verified by running the app on a device.
 
 ## 2. Overview
 
@@ -209,7 +209,9 @@ There is no meaningful test coverage. `innertube/src/test/kotlin/Test.kt` and `k
 
 ## 14. Release and deployment
 
-Release builds enable R8 minification and resource shrinking (`app/build.gradle.kts`, `app/proguard-rules.pro`) and the build can emit a universal APK. Distribution is manual; no store publishing is configured. The earlier README lists an APK checksum and a `v1.0.0` tag. Neither the APK nor that tag could be verified from the repository contents, so treat them as unverified.
+Release builds enable R8 minification and resource shrinking (`app/build.gradle.kts`, `app/proguard-rules.pro`) and the build can emit a universal APK. Distribution is manual through GitHub Releases; no store publishing is configured.
+
+The current release is **v0.5.4** (`versionName 0.5.4`, `versionCode 20`), published as `West-Release.apk`. Download it from the repository's Releases page and verify it with `sha256sum West-Release.apk` against the hash given in the release notes. Because the APK is installed outside an app store, Android will ask you to allow installs from your browser or file manager.
 
 ## 15. Security and privacy
 
