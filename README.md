@@ -18,7 +18,7 @@ The project is beta software; the current release is v0.5.4 (`versionCode 20`). 
 
 | Item | Value | Source |
 | --- | --- | --- |
-| Application ID | `it.vfsfitvnm.vimusic` (`.debug` suffix for debug builds) | `app/build.gradle.kts` |
+| Application ID | `it.vfsfitvnm.vimusic` (`.debug` suffix for debug builds, which is what the v0.5.4 beta APK uses) | `app/build.gradle.kts`, APK manifest |
 | Version | 0.5.4 (code 20) | `app/build.gradle.kts` |
 | minSdk / targetSdk / compileSdk | 21 / 34 / 34 | `app/build.gradle.kts` |
 | Modules | 7 (`app` plus six libraries) | `settings.gradle.kts` |
@@ -211,7 +211,18 @@ There is no meaningful test coverage. `innertube/src/test/kotlin/Test.kt` and `k
 
 Release builds enable R8 minification and resource shrinking (`app/build.gradle.kts`, `app/proguard-rules.pro`) and the build can emit a universal APK. Distribution is manual through GitHub Releases; no store publishing is configured.
 
-The current release is **v0.5.4** (`versionName 0.5.4`, `versionCode 20`), published as `West-Release.apk`. Download it from the repository's Releases page and verify it with `sha256sum West-Release.apk` against the hash given in the release notes. Because the APK is installed outside an app store, Android will ask you to allow installs from your browser or file manager.
+The current release is **v0.5.4** (`versionName 0.5.4`, `versionCode 20`), published as a **debug-build beta**:
+
+| Property | Value |
+| --- | --- |
+| File | `West-v0.5.4-beta.apk` |
+| Size | 11,785,120 bytes (about 11.8 MB) |
+| SHA-256 | `98e4a8170a5d008953c65961782a46331e8f606ecf787183dc95bf07cee850c2` |
+| Package | `it.vfsfitvnm.vimusic.debug` |
+| Build type | Debug: `debuggable=true`, not minified, signed with the Android debug certificate |
+| minSdk / targetSdk | 21 / 34 |
+
+Verify the download with `sha256sum West-v0.5.4-beta.apk`. Because the package ID has the `.debug` suffix, the beta installs as a separate app and can coexist with ViMusic. A future release-signed build (`it.vfsfitvnm.vimusic`) will be a different app with its own data; use Settings > Database to back up and restore your library. Android will ask you to allow installs from your browser or file manager.
 
 ## 15. Security and privacy
 
@@ -226,7 +237,8 @@ The current release is **v0.5.4** (`versionName 0.5.4`, `versionCode 20`), publi
 - Playback relies on impersonating YouTube VisionOS and Android VR clients with hard-coded versions; changes on YouTube's side can break it without notice.
 - Toolchain and libraries are old, and several are pre-release (see section 5).
 - No automated tests; large classes such as `PlayerService.kt` (1,027 lines) and `Database.kt` (684 lines).
-- Application ID and package still use the upstream name, so it cannot coexist with ViMusic signed by another key.
+- The Kotlin package and release application ID still use the upstream name (`it.vfsfitvnm.vimusic`). A future release-signed build cannot be installed over a ViMusic build signed with another key. The current debug beta uses the `.debug` suffix and does not have this conflict.
+- The distributed beta APK is a debug build: larger, unoptimized, debuggable, and signed with the Android debug key.
 - Unofficial client; not affiliated with or endorsed by YouTube or Google.
 
 ## 17. Roadmap
