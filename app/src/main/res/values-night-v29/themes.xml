@@ -1,0 +1,16 @@
+<!-- Night variant of values-v29/themes.xml: full item set plus the
+     API-29-only enforceNavigationBarContrast. -->
+<resources>
+    <style name="Theme.ViMusic" parent="@android:style/Theme.Holo.NoActionBar">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowMinWidthMinor">100%</item>
+        <item name="android:windowMinWidthMajor">100%</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">#14161f</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

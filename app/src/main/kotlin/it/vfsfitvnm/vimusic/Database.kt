@@ -41,6 +41,8 @@ import it.vfsfitvnm.vimusic.models.Artist
 import it.vfsfitvnm.vimusic.models.SongWithContentLength
 import it.vfsfitvnm.vimusic.models.Event
 import it.vfsfitvnm.vimusic.models.Format
+import it.vfsfitvnm.vimusic.listening.data.From23To24Migration
+import it.vfsfitvnm.vimusic.listening.data.ListeningHistoryDao
 import it.vfsfitvnm.vimusic.models.Info
 import it.vfsfitvnm.vimusic.models.Lyrics
 import it.vfsfitvnm.vimusic.models.Playlist
@@ -446,11 +448,12 @@ interface Database {
         Format::class,
         Event::class,
         Lyrics::class,
+        it.vfsfitvnm.vimusic.listening.data.ListeningHistoryEntity::class,
     ],
     views = [
         SortedSongPlaylistMap::class
     ],
-    version = 23,
+    version = 24,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
@@ -476,6 +479,7 @@ interface Database {
 @TypeConverters(Converters::class)
 abstract class DatabaseInitializer protected constructor() : RoomDatabase() {
     abstract val database: Database
+    abstract val listeningHistoryDao: ListeningHistoryDao
 
     companion object {
         lateinit var Instance: DatabaseInitializer
@@ -489,7 +493,8 @@ abstract class DatabaseInitializer protected constructor() : RoomDatabase() {
                         From8To9Migration(),
                         From10To11Migration(),
                         From14To15Migration(),
-                        From22To23Migration()
+                        From22To23Migration(),
+                        From23To24Migration()
                     )
                     .build()
             }

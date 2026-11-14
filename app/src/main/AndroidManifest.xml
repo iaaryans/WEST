@@ -8,6 +8,18 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!--
+      The app also runs on TV (LEANBACK_LAUNCHER below) and does not require a
+      touchscreen where one is absent (ImpliedTouchscreenHardware). Both
+      features stay optional so phones, tablets and TV are all valid targets.
+    -->
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false" />
+
     <queries>
         <intent>
             <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
@@ -103,11 +115,27 @@
             <intent-filter>
                 <action android:name="android.media.browse.MediaBrowserService"/>
             </intent-filter>
+            <!-- Voice search ("play ... on WEST"): the service implements
+                 onPlayFromSearch (MissingIntentFilterForMediaSearch). -->
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH"/>
+            </intent-filter>
         </service>
 
         <receiver
             android:name=".service.PlayerService$NotificationDismissReceiver"
             android:exported="false" />
+
+        <!-- Listening statistics: shares the WEST Wrapped card as a PNG -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <meta-data android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc"/>

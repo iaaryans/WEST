@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalComposeUiApi::class)
+
 package it.vfsfitvnm.vimusic
 
 import android.content.ComponentName
@@ -20,6 +22,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -44,11 +47,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
@@ -348,11 +354,27 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                     LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
                     LocalLayoutDirection provides LayoutDirection.Ltr
                 ) {
-                    HomeScreen(
-                        onPlaylistUrl = { url ->
-                            onNewIntent(Intent.parseUri(url, 0))
-                        }
-                    )
+                    // BUG-008: while the player sheet fully covers the screen,
+                    // the Home content underneath must leave the accessibility
+                    // tree so TalkBack cannot focus hidden controls; it is
+                    // exposed again as soon as the sheet collapses.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(
+                                if (playerBottomSheetState.isExpanded) {
+                                    Modifier.semantics { invisibleToUser() }
+                                } else {
+                                    Modifier
+                                }
+                            )
+                    ) {
+                        HomeScreen(
+                            onPlaylistUrl = { url ->
+                                onNewIntent(Intent.parseUri(url, 0))
+                            }
+                        )
+                    }
 
                     Player(
                         layoutState = playerBottomSheetState,

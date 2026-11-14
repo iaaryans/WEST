@@ -2,42 +2,17 @@ package it.vfsfitvnm.innertube.utils
 
 import it.vfsfitvnm.innertube.Innertube
 import it.vfsfitvnm.innertube.models.MusicShelfRenderer
-import it.vfsfitvnm.innertube.models.NavigationEndpoint
 
 fun Innertube.SongItem.Companion.from(content: MusicShelfRenderer.Content): Innertube.SongItem? {
-    val (mainRuns, otherRuns) = content.runs
+    // Delegate to the structural MusicResponsiveListItemRenderer mapping:
+    // splitting the last flex column by separator (the previous approach)
+    // misreads the current search layout, where that column holds the play
+    // count, producing empty artists and "7B plays" as the duration.
+    val renderer = content.musicResponsiveListItemRenderer ?: return null
 
-    // Possible configurations:
-    // "song" • author(s) • album • duration
-    // "song" • author(s) • duration
-    // author(s) • album • duration
-    // author(s) • duration
+    val song = Innertube.SongItem.from(renderer) ?: return null
 
-    val album: Innertube.Info<NavigationEndpoint.Endpoint.Browse>? = otherRuns
-        .getOrNull(otherRuns.lastIndex - 1)
-        ?.firstOrNull()
-        ?.takeIf { run ->
-            run
-                .navigationEndpoint
-                ?.browseEndpoint
-                ?.type == "MUSIC_PAGE_TYPE_ALBUM"
-        }
-        ?.let(Innertube::Info)
-
-    return Innertube.SongItem(
-        info = mainRuns
-            .firstOrNull()
-            ?.let(Innertube::Info),
-        authors = otherRuns
-            .getOrNull(otherRuns.lastIndex - if (album == null) 1 else 2)
-            ?.map(Innertube::Info),
-        album = album,
-        durationText = otherRuns
-            .lastOrNull()
-            ?.firstOrNull()?.text,
-        thumbnail = content
-            .thumbnail
-    ).takeIf { it.info?.endpoint?.videoId != null }
+    return song.copy(thumbnail = content.thumbnail ?: song.thumbnail)
 }
 
 fun Innertube.VideoItem.Companion.from(content: MusicShelfRenderer.Content): Innertube.VideoItem? {

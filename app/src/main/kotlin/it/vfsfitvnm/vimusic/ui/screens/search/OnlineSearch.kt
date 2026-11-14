@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalComposeUiApi::class)
+
 package it.vfsfitvnm.vimusic.ui.screens.search
 
 import androidx.compose.animation.ExperimentalAnimationApi
@@ -28,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.paint
 import androidx.compose.ui.draw.rotate
@@ -35,6 +38,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextRange
@@ -153,6 +162,27 @@ fun OnlineSearch(
                             decorationBox = decorationBox,
                             modifier = Modifier
                                 .focusRequester(focusRequester)
+                                // Hardware keyboards (Chromebooks, physical keys,
+                                // adb) send KEYCODE_ENTER as a key event instead
+                                // of an IME "Search" action; intercept it before
+                                // the text field turns it into a newline and run
+                                // the same submission logic as the soft keyboard
+                                // (BUG-004). KeyDown-only handling means the
+                                // event is consumed once, so no duplicate
+                                // submission and no newline insertion; key
+                                // auto-repeat is ignored via repeatCount.
+                                .onPreviewKeyEvent { event: KeyEvent ->
+                                    val isEnter = event.key == Key.Enter || event.key == Key.NumPadEnter
+                                    val isSinglePress = event.type == KeyEventType.KeyDown &&
+                                        event.nativeKeyEvent.repeatCount == 0
+
+                                    if (isEnter && isSinglePress && textFieldValue.text.isNotEmpty()) {
+                                        onSearch(textFieldValue.text)
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
                         )
                     },
                     actionsContent = {
