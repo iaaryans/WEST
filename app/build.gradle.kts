@@ -110,5 +110,14 @@ dependencies {
     implementation(projects.innertube)
     implementation(projects.kugou)
 
+    // Spotify import unit tests: JUnit for the runner and a real org.json on
+    // the JVM, because the android.jar org.json is a throwing stub and the
+    // importer's parsing is exactly what the tests exercise. Test scope only.
+    testImplementation(testLibs.junit)
+    testImplementation("org.json:json:20220320")
+    // Listening statistics unit tests run the Room migration against a real
+    // SQLite engine on the JVM. Test scope only: not packaged in the APK.
+    testImplementation("org.xerial:sqlite-jdbc:3.42.0.0")
+
     coreLibraryDesugaring(libs.desugaring)
 }

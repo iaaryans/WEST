@@ -25,6 +25,7 @@ import it.vfsfitvnm.vimusic.models.Song
 import it.vfsfitvnm.vimusic.models.SongWithContentLength
 import it.vfsfitvnm.vimusic.utils.asMediaItem
 import it.vfsfitvnm.vimusic.utils.forcePlayAtIndex
+import it.vfsfitvnm.vimusic.utils.forcePlayFromBeginning
 import it.vfsfitvnm.vimusic.utils.forceSeekToNext
 import it.vfsfitvnm.vimusic.utils.forceSeekToPrevious
 import it.vfsfitvnm.vimusic.utils.intent
@@ -279,6 +280,29 @@ class PlayerMediaBrowserService : MediaBrowserService(), ServiceConnection {
 
                 withContext(Dispatchers.Main) {
                     player.forcePlayAtIndex(mediaItems, index.coerceIn(0, mediaItems.size))
+                }
+            }
+        }
+
+        // Voice search ("play ... on WEST", MissingOnPlayFromSearch): play the
+        // best library match for the query; a blank query starts the
+        // most-played songs. Local library only, like the in-app search.
+        override fun onPlayFromSearch(query: String?, extras: Bundle?) {
+            val search = query?.trim().orEmpty()
+
+            coroutineScope.launch {
+                val songs = if (search.isEmpty()) {
+                    Database.songsByPlayTimeDesc().first().take(50)
+                } else {
+                    Database.search("%$search%").first().take(50)
+                }
+
+                withContext(Dispatchers.Main) {
+                    if (songs.isEmpty()) {
+                        player.play()
+                    } else {
+                        player.forcePlayFromBeginning(songs.map(Song::asMediaItem))
+                    }
                 }
             }
         }

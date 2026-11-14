@@ -20,6 +20,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaDescription
 import android.media.MediaMetadata
+import android.os.Bundle
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.LoudnessEnhancer
 import android.media.session.MediaSession
@@ -76,14 +77,17 @@ import it.vfsfitvnm.vimusic.Database
 import it.vfsfitvnm.vimusic.MainActivity
 import it.vfsfitvnm.vimusic.R
 import it.vfsfitvnm.vimusic.enums.ExoPlayerDiskCacheMaxSize
+import it.vfsfitvnm.vimusic.listening.tracker.ListeningTracker
 import it.vfsfitvnm.vimusic.models.Event
 import it.vfsfitvnm.vimusic.models.QueuedMediaItem
+import it.vfsfitvnm.vimusic.models.Song
 import it.vfsfitvnm.vimusic.query
 import it.vfsfitvnm.vimusic.utils.InvincibleService
 import it.vfsfitvnm.vimusic.utils.RingBuffer
 import it.vfsfitvnm.vimusic.utils.TimerJob
 import it.vfsfitvnm.vimusic.utils.YouTubeRadio
 import it.vfsfitvnm.vimusic.utils.activityPendingIntent
+import it.vfsfitvnm.vimusic.utils.asMediaItem
 import it.vfsfitvnm.vimusic.utils.broadCastPendingIntent
 import it.vfsfitvnm.vimusic.utils.exoPlayerDiskCacheMaxSizeKey
 import it.vfsfitvnm.vimusic.utils.findNextMediaItemById
@@ -115,9 +119,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 @Suppress("DEPRECATION")
 class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListener.Callback,
@@ -125,6 +131,7 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
     private lateinit var mediaSession: MediaSession
     private lateinit var cache: SimpleCache
     private lateinit var player: ExoPlayer
+    private lateinit var listeningTracker: ListeningTracker
 
     private val stateBuilder = PlaybackState.Builder()
         .setActions(
@@ -243,11 +250,16 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         player.addListener(this)
         player.addAnalyticsListener(PlaybackStatsListener(false, this))
 
+        // Listening statistics: an isolated Player.Listener that records
+        // real playback sessions (see listening/tracker/ListeningTracker.kt)
+        listeningTracker = ListeningTracker(this, player)
+        player.addListener(listeningTracker)
+
         maybeRestorePlayerQueue()
 
         mediaSession = MediaSession(baseContext, "PlayerService")
         mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS)
-        mediaSession.setCallback(SessionCallback(player))
+        mediaSession.setCallback(SessionCallback(player, coroutineScope))
         mediaSession.setPlaybackState(stateBuilder.build())
         mediaSession.isActive = true
 
@@ -278,6 +290,8 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
 
     override fun onDestroy() {
         maybeSavePlayerQueue()
+
+        listeningTracker.shutdown()
 
         preferences.unregisterOnSharedPreferenceChangeListener(this)
 
@@ -970,7 +984,10 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         }
     }
 
-    private class SessionCallback(private val player: Player) : MediaSession.Callback() {
+    private class SessionCallback(
+        private val player: Player,
+        private val coroutineScope: CoroutineScope
+    ) : MediaSession.Callback() {
         override fun onPlay() = player.play()
         override fun onPause() = player.pause()
         override fun onSkipToPrevious() = runCatching(player::forceSeekToPrevious).let { }
@@ -979,6 +996,30 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         override fun onStop() = player.pause()
         override fun onRewind() = player.seekToDefaultPosition()
         override fun onSkipToQueueItem(id: Long) = runCatching { player.seekToDefaultPosition(id.toInt()) }.let { }
+
+        // Voice search ("play ... on WEST", MissingOnPlayFromSearch): play the
+        // best library match for the query; a blank query resumes playback or
+        // starts the most-played songs. Results come from the local library
+        // only, exactly like the in-app search.
+        override fun onPlayFromSearch(query: String?, extras: Bundle?) {
+            val search = query?.trim().orEmpty()
+
+            coroutineScope.launch {
+                val songs = if (search.isEmpty()) {
+                    Database.songsByPlayTimeDesc().first().take(50)
+                } else {
+                    Database.search("%$search%").first().take(50)
+                }
+
+                withContext(Dispatchers.Main) {
+                    if (songs.isEmpty()) {
+                        player.play()
+                    } else {
+                        player.forcePlayFromBeginning(songs.map(Song::asMediaItem))
+                    }
+                }
+            }
+        }
     }
 
     private class NotificationActionReceiver(private val player: Player) : BroadcastReceiver() {

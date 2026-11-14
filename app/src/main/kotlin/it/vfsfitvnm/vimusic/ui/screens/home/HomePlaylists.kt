@@ -5,6 +5,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import it.vfsfitvnm.compose.persist.persistList
 import it.vfsfitvnm.vimusic.Database
@@ -43,7 +45,6 @@ import it.vfsfitvnm.vimusic.query
 import it.vfsfitvnm.vimusic.ui.components.themed.FloatingActionsContainerWithScrollToTop
 import it.vfsfitvnm.vimusic.ui.components.themed.Header
 import it.vfsfitvnm.vimusic.ui.components.themed.HeaderIconButton
-import it.vfsfitvnm.vimusic.ui.components.themed.SecondaryTextButton
 import it.vfsfitvnm.vimusic.ui.components.themed.TextFieldDialog
 import it.vfsfitvnm.vimusic.ui.items.PlaylistItem
 import it.vfsfitvnm.vimusic.ui.styling.Dimensions
@@ -59,6 +60,7 @@ import it.vfsfitvnm.vimusic.utils.rememberPreference
 fun HomePlaylists(
     onBuiltInPlaylist: (BuiltInPlaylist) -> Unit,
     onPlaylistClick: (Playlist) -> Unit,
+    onImportFromSpotify: () -> Unit,
     onSearchClick: () -> Unit,
 ) {
     val (colorPalette) = LocalAppearance.current
@@ -117,11 +119,6 @@ fun HomePlaylists(
         ) {
             item(key = "header", contentType = 0, span = { GridItemSpan(maxLineSpan) }) {
                 Header(title = "Playlists") {
-                    SecondaryTextButton(
-                        text = "New playlist",
-                        onClick = { isCreatingANewPlaylist = true }
-                    )
-
                     Spacer(
                         modifier = Modifier
                             .weight(1f)
@@ -158,6 +155,40 @@ fun HomePlaylists(
                             .graphicsLayer { rotationZ = sortOrderIconRotation }
                     )
                 }
+            }
+
+            item(key = "newPlaylist") {
+                PlaylistItem(
+                    icon = R.drawable.add,
+                    colorTint = colorPalette.accent,
+                    name = "New Playlist",
+                    songCount = null,
+                    thumbnailSizeDp = thumbnailSizeDp,
+                    alternative = true,
+                    modifier = Modifier
+                        .clickable(onClick = { isCreatingANewPlaylist = true })
+                        .animateItemPlacement()
+                )
+            }
+
+            item(key = "spotifyImport") {
+                PlaylistItem(
+                    thumbnailContent = { modifier ->
+                        Image(
+                            painter = painterResource(R.drawable.spotify_logo),
+                            contentDescription = null,
+                            modifier = modifier
+                        )
+                    },
+                    songCount = null,
+                    name = "Import from Spotify",
+                    channelName = null,
+                    thumbnailSizeDp = thumbnailSizeDp,
+                    alternative = true,
+                    modifier = Modifier
+                        .clickable(onClick = onImportFromSpotify)
+                        .animateItemPlacement()
+                )
             }
 
             item(key = "favorites") {

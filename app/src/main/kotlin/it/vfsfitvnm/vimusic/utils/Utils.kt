@@ -21,7 +21,10 @@ val Innertube.SongItem.asMediaItem: MediaItem
         .setMediaMetadata(
             MediaMetadata.Builder()
                 .setTitle(info?.name)
-                .setArtist(authors?.joinToString("") { it.name ?: "" })
+                // SongItem authors are endpoint runs only (no separator runs
+                // since the structural Innertube mapping), so join the names
+                // with an explicit separator instead of concatenating them.
+                .setArtist(authors?.joinToString(", ") { it.name ?: "" })
                 .setAlbumTitle(album?.name)
                 .setArtworkUri(thumbnail?.url?.toUri())
                 .setExtras(

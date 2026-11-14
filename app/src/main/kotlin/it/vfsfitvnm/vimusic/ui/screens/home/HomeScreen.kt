@@ -24,6 +24,8 @@ import it.vfsfitvnm.vimusic.ui.screens.builtInPlaylistRoute
 import it.vfsfitvnm.vimusic.ui.screens.builtinplaylist.BuiltInPlaylistScreen
 import it.vfsfitvnm.vimusic.ui.screens.globalRoutes
 import it.vfsfitvnm.vimusic.ui.screens.localPlaylistRoute
+import it.vfsfitvnm.vimusic.listening.presentation.ListeningInsightsScreen
+import it.vfsfitvnm.vimusic.listening.presentation.listeningStatsRoute
 import it.vfsfitvnm.vimusic.ui.screens.localplaylist.LocalPlaylistScreen
 import it.vfsfitvnm.vimusic.ui.screens.playlistRoute
 import it.vfsfitvnm.vimusic.ui.screens.search.SearchScreen
@@ -32,10 +34,22 @@ import it.vfsfitvnm.vimusic.ui.screens.searchRoute
 import it.vfsfitvnm.vimusic.ui.screens.searchresult.SearchResultScreen
 import it.vfsfitvnm.vimusic.ui.screens.settings.SettingsScreen
 import it.vfsfitvnm.vimusic.ui.screens.settingsRoute
+import it.vfsfitvnm.vimusic.ui.screens.spotify.SpotifyImportScreen
+import it.vfsfitvnm.vimusic.ui.screens.spotify.spotifyImportRoute
 import it.vfsfitvnm.vimusic.utils.homeScreenTabIndexKey
 import it.vfsfitvnm.vimusic.utils.pauseSearchHistoryKey
 import it.vfsfitvnm.vimusic.utils.preferences
 import it.vfsfitvnm.vimusic.utils.rememberPreference
+
+/**
+ * Index of the "Insights" entry in the left navigation rail.
+ *
+ * It deliberately sits outside the range of the switchable home tabs (0-4):
+ * the sidebar item reuses the exact same rendering as the other navigation
+ * items, but selecting it opens the existing [listeningStatsRoute] (the
+ * original Insights screen) instead of switching the home tab content.
+ */
+private const val INSIGHTS_TAB_INDEX = 5
 
 @ExperimentalFoundationApi
 @ExperimentalAnimationApi
@@ -65,6 +79,18 @@ fun HomeScreen(onPlaylistUrl: (String) -> Unit) {
 
         settingsRoute {
             SettingsScreen()
+        }
+
+        spotifyImportRoute {
+            SpotifyImportScreen(
+                onViewPlaylist = { playlistId ->
+                    localPlaylistRoute(playlistId)
+                }
+            )
+        }
+
+        listeningStatsRoute {
+            ListeningInsightsScreen()
         }
 
         localPlaylistRoute { playlistId ->
@@ -117,13 +143,20 @@ fun HomeScreen(onPlaylistUrl: (String) -> Unit) {
                 topIconButtonId = R.drawable.equalizer,
                 onTopIconButtonClick = { settingsRoute() },
                 tabIndex = tabIndex,
-                onTabChanged = onTabChanged,
+                onTabChanged = { index ->
+                    if (index == INSIGHTS_TAB_INDEX) {
+                        listeningStatsRoute()
+                    } else {
+                        onTabChanged(index)
+                    }
+                },
                 tabColumnContent = { Item ->
                     Item(0, "Quick picks", R.drawable.sparkles)
                     Item(1, "Songs", R.drawable.musical_notes)
                     Item(2, "Playlists", R.drawable.playlist)
                     Item(3, "Artists", R.drawable.person)
                     Item(4, "Albums", R.drawable.disc)
+                    Item(INSIGHTS_TAB_INDEX, "Insights", R.drawable.trending)
                 }
             ) { currentTabIndex ->
                 saveableStateHolder.SaveableStateProvider(key = currentTabIndex) {
@@ -142,6 +175,7 @@ fun HomeScreen(onPlaylistUrl: (String) -> Unit) {
                         2 -> HomePlaylists(
                             onBuiltInPlaylist = { builtInPlaylistRoute(it) },
                             onPlaylistClick = { localPlaylistRoute(it.id) },
+                            onImportFromSpotify = { spotifyImportRoute() },
                             onSearchClick = { searchRoute("") }
                         )
 
