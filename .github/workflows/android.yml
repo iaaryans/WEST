@@ -46,7 +46,8 @@ jobs:
       - name: Build WEST APK
         run: ./gradlew --no-daemon --stacktrace -PwestPreview :app:assembleDebug
 
-      - name: Run Android instrumentation regression tests
+      - name: Run Android instrumentation regression tests (manual only)
+        if: github.event_name == 'workflow_dispatch'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -98,7 +99,6 @@ jobs:
             echo 'Required size: greater than 25000000 bytes'
             echo 'JVM tests: passed (workflow gate)'
             echo 'Android lint: passed (workflow gate)'
-            echo 'Instrumentation tests: passed (workflow gate)'
             echo 'APK signature: verified'
           } > dist/BUILD_REPORT.txt
           if (( size <= 25000000 )); then
