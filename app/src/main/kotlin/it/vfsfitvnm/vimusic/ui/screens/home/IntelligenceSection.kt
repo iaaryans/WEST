@@ -20,7 +20,7 @@ import it.vfsfitvnm.vimusic.ui.styling.px
 import it.vfsfitvnm.vimusic.utils.asMediaItem
 import it.vfsfitvnm.vimusic.utils.preferences
 
-/** WEST Intelligence shelves remain local-first, now in BitChord-style horizontal pages. */
+/** WEST Intelligence shelves remain local-first, displayed in horizontal discovery pages. */
 @Composable
 internal fun IntelligenceSection() {
     val prefs = LocalContext.current.preferences
