@@ -1,5 +1,9 @@
 <div align="center">
-  <img src="./app/src/main/logo.png" width="128" height="128" alt="WEST logo" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./app/src/main/res/drawable-nodpi/west_logo_full_light.png" />
+    <source media="(prefers-color-scheme: light)" srcset="./app/src/main/res/drawable-nodpi/west_logo_full_dark.png" />
+    <img src="./app/src/main/res/drawable-nodpi/west_logo_full_dark.png" width="360" alt="WEST — official red waveform logo" />
+  </picture>
   <h1>WEST</h1>
   <p><b>An Android music client for YouTube Music, forked from ViMusic.</b></p>
 </div>
