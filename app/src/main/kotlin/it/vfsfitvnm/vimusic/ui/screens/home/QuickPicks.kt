@@ -184,7 +184,7 @@ fun QuickPicks(
             }
         }
 
-        // BitChord's lead shelf uses 3:4 portrait cards with artwork and overlaid labels.
+        // The lead shelf uses 3:4 portrait cards with artwork and overlaid labels.
         // Its recommendations come from WEST playback, rather than fake hardcoded songs.
         item(key = "top-picks") {
             HomeShelfTitle(HomeShelfPolicy.TOP_PICKS, "A starting point made for your listening")
