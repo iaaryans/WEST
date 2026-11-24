@@ -20,7 +20,7 @@ This is an additive change on top of WEST's previous UI optimizations and Moodsp
 adb logcat -s WEST_Performance:I WEST_Moodspace:W
 ```
 
-To compare WEST vs BitChord on the **same** refresh-rate device, in the same power/thermal state, and using identical input actions:
+To compare WEST before and after performance changes, use the **same** refresh-rate device, the same power/thermal state, and identical input actions:
 
 ```sh
 adb shell dumpsys gfxinfo it.vfsfitvnm.vimusic reset
