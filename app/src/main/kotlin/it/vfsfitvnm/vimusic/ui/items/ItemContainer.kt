@@ -27,9 +27,9 @@ inline fun ItemContainer(
     if (alternative) {
         Column(
             horizontalAlignment = horizontalAlignment,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = modifier
-                .padding(vertical = Dimensions.itemsVerticalPadding, horizontal = 16.dp)
+                .padding(vertical = Dimensions.itemsVerticalPadding, horizontal = 8.dp)
                 .width(thumbnailSizeDp)
         ) {
             content(

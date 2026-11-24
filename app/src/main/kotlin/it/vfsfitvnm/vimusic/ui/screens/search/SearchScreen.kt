@@ -1,5 +1,16 @@
 package it.vfsfitvnm.vimusic.ui.screens.search
+import it.vfsfitvnm.vimusic.ui.components.themed.FilterPage
 
+
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import it.vfsfitvnm.vimusic.voice.VoiceSearchDialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.tween
@@ -33,6 +44,20 @@ fun SearchScreen(
     onViewPlaylist: (String) -> Unit
 ) {
     val saveableStateHolder = rememberSaveableStateHolder()
+    val context = LocalContext.current
+    var voiceVisible by rememberSaveable { mutableStateOf(false) }
+    val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
+        if (allowed) voiceVisible = true
+    }
+    val requestVoiceSearch: () -> Unit = {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            voiceVisible = true
+        } else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+    }
+    if (voiceVisible) VoiceSearchDialog(onDismiss = { voiceVisible = false }, onSearch = { query ->
+        voiceVisible = false
+        onSearch(query)
+    })
 
     val (tabIndex, onTabChanged) = rememberSaveable {
         mutableStateOf(0)
@@ -52,57 +77,46 @@ fun SearchScreen(
 
     PersistMapCleanup(tagPrefix = "search/")
 
-    RouteHandler(listenToGlobalEmitter = true) {
-        globalRoutes()
-
-        host {
-            val decorationBox: @Composable (@Composable () -> Unit) -> Unit = { innerTextField ->
-                Box {
-                    AnimatedVisibility(
-                        visible = textFieldValue.text.isEmpty(),
-                        enter = fadeIn(tween(300)),
-                        exit = fadeOut(tween(300)),
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                    ) {
-                        BasicText(
-                            text = "Enter a name",
-                            maxLines = 1,
-                            style = LocalAppearance.current.typography.xxl.secondary
-                        )
-                    }
-
-                    innerTextField()
-                }
+    val decorationBox: @Composable (@Composable () -> Unit) -> Unit = { innerTextField ->
+        Box {
+            AnimatedVisibility(
+                visible = textFieldValue.text.isEmpty(),
+                enter = fadeIn(tween(300)),
+                exit = fadeOut(tween(300)),
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+            ) {
+                BasicText(
+                    text = "Search music",
+                    maxLines = 1,
+                    style = LocalAppearance.current.typography.xxl.secondary
+                )
             }
 
-            Scaffold(
-                topIconButtonId = R.drawable.chevron_back,
-                onTopIconButtonClick = pop,
-                tabIndex = tabIndex,
-                onTabChanged = onTabChanged,
-                tabColumnContent = { Item ->
-                    Item(0, "Online", R.drawable.globe)
-                    Item(1, "Library", R.drawable.library)
-                }
-            ) { currentTabIndex ->
-                saveableStateHolder.SaveableStateProvider(currentTabIndex) {
-                    when (currentTabIndex) {
-                        0 -> OnlineSearch(
-                            textFieldValue = textFieldValue,
-                            onTextFieldValueChanged = onTextFieldValueChanged,
-                            onSearch = onSearch,
-                            onViewPlaylist = onViewPlaylist,
-                            decorationBox = decorationBox
-                        )
+            innerTextField()
+        }
+    }
 
-                        1 -> LocalSongSearch(
-                            textFieldValue = textFieldValue,
-                            onTextFieldValueChanged = onTextFieldValueChanged,
-                            decorationBox = decorationBox
-                        )
-                    }
-                }
+    val currentTabIndex = tabIndex
+    FilterPage(listOf("All", "Library", "When I heard it", "Smart"), tabIndex, onTabChanged) {
+        saveableStateHolder.SaveableStateProvider(currentTabIndex) {
+            when (currentTabIndex) {
+                0 -> OnlineSearch(
+                    textFieldValue = textFieldValue,
+                    onTextFieldValueChanged = onTextFieldValueChanged,
+                    onSearch = onSearch,
+                    onVoiceSearch = requestVoiceSearch,
+                    onViewPlaylist = onViewPlaylist,
+                    decorationBox = decorationBox
+                )
+
+                3 -> IntelligentSearch(onSearch)
+                        2 -> HeardHistory()
+                1 -> LocalSongSearch(
+                    textFieldValue = textFieldValue,
+                    onTextFieldValueChanged = onTextFieldValueChanged,
+                    decorationBox = decorationBox
+                )
             }
         }
     }

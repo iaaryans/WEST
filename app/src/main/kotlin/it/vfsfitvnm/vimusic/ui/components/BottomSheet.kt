@@ -6,7 +6,6 @@ import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.VectorConverter
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.DraggableState
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -46,6 +45,7 @@ fun BottomSheet(
     modifier: Modifier = Modifier,
     onDismiss: (() -> Unit)? = null,
     collapsedContent: @Composable BoxScope.() -> Unit,
+    transitionOverlay: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit
 ) {
     Box(
@@ -62,7 +62,10 @@ fun BottomSheet(
                 detectVerticalDragGestures(
                     onVerticalDrag = { change, dragAmount ->
                         velocityTracker.addPointerInputChange(change)
-                        state.dispatchRawDelta(dragAmount)
+                        val delta = if (onDismiss == null && dragAmount > 0f) {
+                            dragAmount.coerceAtMost((state.value - state.collapsedBound).toPx().coerceAtLeast(0f))
+                        } else dragAmount
+                        state.dispatchRawDelta(delta)
                     },
                     onDragCancel = {
                         velocityTracker.resetTracking()
@@ -79,7 +82,9 @@ fun BottomSheet(
     ) {
         if (!state.isCollapsed) {
             BackHandler(onBack = state::collapseSoft)
-            content()
+            Box(Modifier.fillMaxSize().graphicsLayer {
+                alpha = (state.progress * 3f).coerceIn(0f, 1f)
+            }, content = content)
         }
 
         if (!state.isExpanded && (onDismiss == null || !state.isDismissed)) {
@@ -94,6 +99,7 @@ fun BottomSheet(
                 content = collapsedContent
             )
         }
+        transitionOverlay()
     }
 }
 
@@ -103,6 +109,7 @@ class BottomSheetState(
     private val coroutineScope: CoroutineScope,
     private val animatable: Animatable<Dp, AnimationVector1D>,
     private val onAnchorChanged: (Int) -> Unit,
+    private val pixelsPerDp: Float,
     val collapsedBound: Dp,
 ) : DraggableState by draggableState {
     val dismissedBound: Dp
@@ -143,20 +150,21 @@ class BottomSheetState(
         }
     }
 
-    private fun collapse() {
-        collapse(SpringSpec())
-    }
-
-    private fun expand() {
-        expand(SpringSpec())
+    private fun settle(open: Boolean, velocity: Float = 0f) {
+        val target = if (open) expandedBound else collapsedBound
+        onAnchorChanged(if (open) expandedAnchor else collapsedAnchor)
+        coroutineScope.launch {
+            animatable.animateTo(target, SpringSpec(dampingRatio = 1f, stiffness = 195f),
+                initialVelocity = Dp(velocity / pixelsPerDp))
+        }
     }
 
     fun collapseSoft() {
-        collapse(tween(300))
+        settle(open = false)
     }
 
     fun expandSoft() {
-        expand(tween(300))
+        settle(open = true)
     }
 
     fun dismiss() {
@@ -174,18 +182,18 @@ class BottomSheetState(
 
     fun performFling(velocity: Float, onDismiss: (() -> Unit)?) {
         if (velocity > 250) {
-            expand()
+            settle(open = true, velocity = velocity)
         } else if (velocity < -250) {
             if (value < collapsedBound && onDismiss != null) {
                 dismiss()
                 onDismiss.invoke()
             } else {
-                collapse()
+                settle(open = false, velocity = velocity)
             }
         } else {
             val l0 = dismissedBound
-            val l1 = (collapsedBound - dismissedBound) / 2
-            val l2 = (expandedBound - collapsedBound) / 2
+            val l1 = dismissedBound + (collapsedBound - dismissedBound) / 2
+            val l2 = collapsedBound + (expandedBound - collapsedBound) / 2
             val l3 = expandedBound
 
             when (value) {
@@ -194,11 +202,11 @@ class BottomSheetState(
                         dismiss()
                         onDismiss.invoke()
                     } else {
-                        collapse()
+                        settle(open = false, velocity = velocity)
                     }
                 }
-                in l1..l2 -> collapse()
-                in l2..l3 -> expand()
+                in l1..l2 -> settle(open = false, velocity = velocity)
+                in l2..l3 -> settle(open = true, velocity = velocity)
                 else -> Unit
             }
         }
@@ -274,7 +282,7 @@ fun rememberBottomSheetState(
         mutableStateOf(initialAnchor)
     }
 
-    return remember(dismissedBound, expandedBound, collapsedBound, coroutineScope) {
+    return remember(dismissedBound, expandedBound, collapsedBound, coroutineScope, density) {
         val initialValue = when (previousAnchor) {
             expandedAnchor -> expandedBound
             collapsedAnchor -> collapsedBound
@@ -293,6 +301,7 @@ fun rememberBottomSheetState(
                 }
             },
             onAnchorChanged = { previousAnchor = it },
+            pixelsPerDp = density.density,
             coroutineScope = coroutineScope,
             animatable = animatable,
             collapsedBound = collapsedBound

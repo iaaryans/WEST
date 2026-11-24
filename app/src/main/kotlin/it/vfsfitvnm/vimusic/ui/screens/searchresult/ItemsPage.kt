@@ -1,6 +1,7 @@
 package it.vfsfitvnm.vimusic.ui.screens.searchresult
 
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
@@ -16,6 +17,9 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -31,20 +35,23 @@ import it.vfsfitvnm.vimusic.ui.styling.LocalAppearance
 import it.vfsfitvnm.vimusic.utils.center
 import it.vfsfitvnm.vimusic.utils.secondary
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 @ExperimentalAnimationApi
 @Composable
-inline fun <T : Innertube.Item> ItemsPage(
+fun <T : Innertube.Item> ItemsPage(
     tag: String,
-    crossinline headerContent: @Composable (textButton: (@Composable () -> Unit)?) -> Unit,
-    crossinline itemContent: @Composable LazyItemScope.(T) -> Unit,
-    noinline itemPlaceholderContent: @Composable () -> Unit,
+    headerContent: @Composable (textButton: (@Composable () -> Unit)?) -> Unit,
+    itemContent: @Composable LazyItemScope.(T) -> Unit,
+    itemPlaceholderContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    excludedKeys: Set<String> = emptySet(),
+    onItemsChanged: ((List<T>) -> Unit)? = null,
     initialPlaceholderCount: Int = 8,
     continuationPlaceholderCount: Int = 3,
     emptyItemsText: String = "No items found",
-    noinline itemsPageProvider: (suspend (String?) -> Result<Innertube.ItemsPage<T>?>?)? = null,
+    itemsPageProvider: (suspend (String?) -> Result<Innertube.ItemsPage<T>?>?)? = null,
 ) {
     val (_, typography) = LocalAppearance.current
 
@@ -52,27 +59,31 @@ inline fun <T : Innertube.Item> ItemsPage(
 
     val lazyListState = rememberLazyListState()
 
-    var itemsPage by persist<Innertube.ItemsPage<T>?>(tag)
+    var itemsPage by key(tag) { persist<Innertube.ItemsPage<T>?>(tag) }
+    val loadedItems = itemsPage?.items.orEmpty().filterNot { it.key in excludedKeys }
+    val updatedOnItemsChanged by rememberUpdatedState(onItemsChanged)
+    LaunchedEffect(tag, loadedItems) { updatedOnItemsChanged?.invoke(loadedItems) }
 
-    LaunchedEffect(lazyListState, updatedItemsPageProvider) {
-        val currentItemsPageProvider = updatedItemsPageProvider ?: return@LaunchedEffect
+    var loadFailed by remember(tag) { mutableStateOf(false) }
+    LaunchedEffect(lazyListState, tag, itemsPageProvider != null, loadFailed) {
+        if (loadFailed || updatedItemsPageProvider == null) return@LaunchedEffect
 
-        snapshotFlow { lazyListState.layoutInfo.visibleItemsInfo.any { it.key == "loading" } }
-            .collect { shouldLoadMore ->
-                if (!shouldLoadMore) return@collect
-
-                withContext(Dispatchers.IO) {
-                    currentItemsPageProvider(itemsPage?.continuation)
-                }?.onSuccess {
-                    if (it == null) {
-                        if (itemsPage == null) {
-                            itemsPage = Innertube.ItemsPage(null, null)
-                        }
-                    } else {
-                        itemsPage += it
-                    }
-                }
+        snapshotFlow {
+            lazyListState.layoutInfo.visibleItemsInfo.any { it.key == "loading" } to itemsPage?.continuation
+        }.collect { (visible, continuation) ->
+            if (!visible || loadFailed || (itemsPage != null && continuation == null)) return@collect
+            val provider = updatedItemsPageProvider ?: return@collect
+            val result = withContext(Dispatchers.IO) { provider(continuation) }
+            if (result == null) {
+                coroutineContext.ensureActive()
+                loadFailed = true
+                return@collect
             }
+            result.onSuccess { page ->
+                val next = page ?: Innertube.ItemsPage<T>(null, null)
+                itemsPage += if (next.continuation == continuation) next.copy(continuation = null) else next
+            }.onFailure { loadFailed = true }
+        }
     }
 
     Box {
@@ -91,8 +102,8 @@ inline fun <T : Innertube.Item> ItemsPage(
             }
 
             items(
-                items = itemsPage?.items ?: emptyList(),
-                key = Innertube.Item::key,
+                items = loadedItems,
+                key = { "item/${it.key}" },
                 itemContent = itemContent
             )
 
@@ -108,7 +119,15 @@ inline fun <T : Innertube.Item> ItemsPage(
                 }
             }
 
-            if (!(itemsPage != null && itemsPage?.continuation == null)) {
+            if (loadFailed) {
+                item(key = "retry") {
+                    BasicText(
+                        text = "Couldn’t load results. Tap to retry.",
+                        style = typography.xs.secondary.center,
+                        modifier = Modifier.fillMaxWidth().clickable { loadFailed = false }.padding(16.dp)
+                    )
+                }
+            } else if (!(itemsPage != null && itemsPage?.continuation == null)) {
                 item(key = "loading") {
                     val isFirstLoad = itemsPage?.items.isNullOrEmpty()
                     ShimmerHost(

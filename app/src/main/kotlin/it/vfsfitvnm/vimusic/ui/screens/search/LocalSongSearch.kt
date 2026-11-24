@@ -123,11 +123,7 @@ fun LocalSongSearch(
                             },
                             onClick = {
                                 val mediaItem = song.asMediaItem
-                                binder?.stopRadio()
-                                binder?.player?.forcePlay(mediaItem)
-                                binder?.setupRadio(
-                                    NavigationEndpoint.Endpoint.Watch(videoId = mediaItem.mediaId)
-                                )
+                                binder?.playSmartQueue(mediaItem, items.map { it.asMediaItem })
                             }
                         )
                         .animateItemPlacement()

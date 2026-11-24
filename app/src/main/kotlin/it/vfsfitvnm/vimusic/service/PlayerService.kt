@@ -74,6 +74,10 @@ import it.vfsfitvnm.innertube.models.NavigationEndpoint
 import it.vfsfitvnm.innertube.models.bodies.PlayerBody
 import it.vfsfitvnm.innertube.requests.player
 import it.vfsfitvnm.vimusic.Database
+import it.vfsfitvnm.vimusic.intelligence.IntelligencePreferences
+import it.vfsfitvnm.vimusic.intelligence.SmartQueueRanker
+import it.vfsfitvnm.vimusic.listening.data.listeningHistory
+import it.vfsfitvnm.vimusic.personalization.TasteProfileStore
 import it.vfsfitvnm.vimusic.MainActivity
 import it.vfsfitvnm.vimusic.R
 import it.vfsfitvnm.vimusic.enums.ExoPlayerDiskCacheMaxSize
@@ -91,7 +95,6 @@ import it.vfsfitvnm.vimusic.utils.asMediaItem
 import it.vfsfitvnm.vimusic.utils.broadCastPendingIntent
 import it.vfsfitvnm.vimusic.utils.exoPlayerDiskCacheMaxSizeKey
 import it.vfsfitvnm.vimusic.utils.findNextMediaItemById
-import it.vfsfitvnm.vimusic.utils.forcePlayFromBeginning
 import it.vfsfitvnm.vimusic.utils.forceSeekToNext
 import it.vfsfitvnm.vimusic.utils.forceSeekToPrevious
 import it.vfsfitvnm.vimusic.utils.getEnum
@@ -105,6 +108,8 @@ import it.vfsfitvnm.vimusic.utils.mediaItems
 import it.vfsfitvnm.vimusic.utils.persistentQueueKey
 import it.vfsfitvnm.vimusic.utils.preferences
 import it.vfsfitvnm.vimusic.utils.queueLoopEnabledKey
+import it.vfsfitvnm.vimusic.utils.smartContinueEnabledKey
+import it.vfsfitvnm.vimusic.utils.forcePlayFromBeginning
 import it.vfsfitvnm.vimusic.utils.resumePlaybackWhenDeviceConnectedKey
 import it.vfsfitvnm.vimusic.utils.shouldBePlaying
 import it.vfsfitvnm.vimusic.utils.skipSilenceKey
@@ -113,6 +118,7 @@ import it.vfsfitvnm.vimusic.utils.trackLoopEnabledKey
 import it.vfsfitvnm.vimusic.utils.volumeNormalizationKey
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -153,6 +159,9 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
     private var timerJob: TimerJob? = null
 
     private var radio: YouTubeRadio? = null
+    private var radioGeneration = 0L
+    private var pendingSmartSkipGeneration: Long? = null
+    private var radioRefillJob: Job? = null
 
     private lateinit var bitmapProvider: BitmapProvider
 
@@ -160,6 +169,8 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
 
     private var volumeNormalizationJob: Job? = null
 
+    private var queueReady = false
+    private var destroyed = false
     private var isPersistentQueueEnabled = false
     private var isShowingThumbnailInLockscreen = true
     override var isInvincibilityEnabled = false
@@ -198,7 +209,7 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         preferences.registerOnSharedPreferenceChangeListener(this)
 
         val preferences = preferences
-        isPersistentQueueEnabled = preferences.getBoolean(persistentQueueKey, false)
+        isPersistentQueueEnabled = preferences.getBoolean(persistentQueueKey, true)
         isInvincibilityEnabled = preferences.getBoolean(isInvincibilityEnabledKey, false)
         isShowingThumbnailInLockscreen =
             preferences.getBoolean(isShowingThumbnailInLockscreenKey, false)
@@ -259,11 +270,11 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
 
         mediaSession = MediaSession(baseContext, "PlayerService")
         mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS)
-        mediaSession.setCallback(SessionCallback(player, coroutineScope))
+        mediaSession.setCallback(SessionCallback(player, coroutineScope, binder::skipToNextOrDiscover))
         mediaSession.setPlaybackState(stateBuilder.build())
         mediaSession.isActive = true
 
-        notificationActionReceiver = NotificationActionReceiver(player)
+        notificationActionReceiver = NotificationActionReceiver(player, binder::skipToNextOrDiscover)
 
         val filter = IntentFilter().apply {
             addAction(Action.play.value)
@@ -290,8 +301,12 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
 
     override fun onDestroy() {
         maybeSavePlayerQueue()
+        destroyed = true
 
         listeningTracker.shutdown()
+        binder.stopRadio()
+        radioRefillJob?.cancel()
+        coroutineScope.coroutineContext[Job]?.cancel()
 
         preferences.unregisterOnSharedPreferenceChangeListener(this)
 
@@ -378,6 +393,10 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
     }
 
     private fun updateMediaSessionQueue(timeline: Timeline) {
+        if (timeline.windowCount == 0) {
+            mediaSession.setQueue(emptyList())
+            return
+        }
         val builder = MediaDescription.Builder()
 
         val currentMediaItemIndex = player.currentMediaItemIndex
@@ -418,18 +437,96 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         }
     }
 
+    /** Refill only once per generation, never from two concurrent transition callbacks. */
     private fun maybeProcessRadio() {
-        radio?.let { radio ->
-            if (player.mediaItemCount - player.currentMediaItemIndex <= 3) {
-                coroutineScope.launch(Dispatchers.Main) {
-                    player.addMediaItems(radio.process())
+        val source = radio ?: return
+        if (!preferences.getBoolean(smartContinueEnabledKey, true)) return
+        if (binder.isLoadingRadio || radioRefillJob?.isActive == true) return
+        if (player.mediaItemCount - player.currentMediaItemIndex > 3) return
+        val generation = radioGeneration
+        radioRefillJob = coroutineScope.launch(Dispatchers.Main) {
+            binder.isLoadingRadio = true
+            try {
+                val page = source.process()
+                if (generation != radioGeneration) return@launch
+                val ranked = rankedRadioMedia(page)
+                if (generation != radioGeneration) return@launch
+                if (ranked.isEmpty()) radio = null // no valid continuation, do not retry forever
+                else {
+                    player.addMediaItems(ranked)
+                    maybeConsumePendingSmartSkip(generation)
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (generation == radioGeneration) radio = null // offline/provider failure
+            } finally {
+                if (generation == radioGeneration) binder.isLoadingRadio = false
             }
         }
     }
 
+    /** A Next tap made during a one-song radio load is honored when songs arrive. */
+    private fun maybeConsumePendingSmartSkip(generation: Long) {
+        if (pendingSmartSkipGeneration != generation || generation != radioGeneration) return
+        pendingSmartSkipGeneration = null
+        if (player.mediaItemCount > 1 && player.hasNextMediaItem()) player.forceSeekToNext()
+    }
+
+    /** All database lookups are asynchronous; first playback is never blocked by ranking. */
+    private suspend fun rankedRadioMedia(items: List<MediaItem>): List<MediaItem> {
+        if (items.isEmpty()) return emptyList()
+        val inQueue = player.currentTimeline.mediaItems.mapTo(HashSet()) { it.mediaId }
+        val available = items.filter { it.mediaId.isNotBlank() && it.mediaId !in inQueue }
+            .distinctBy { it.mediaId }
+        if (available.isEmpty()) return emptyList()
+        if (!IntelligencePreferences.enabled(preferences)) return available.take(16)
+
+        return try {
+            val profile = TasteProfileStore.load(preferences)
+            val library = withContext(Dispatchers.IO) { Database.intelligenceLibrary().first() }
+            val sessions = withContext(Dispatchers.IO) { Database.listeningHistory.recentForIntelligence(250).first() }
+            val byId = library.associateBy { it.id }
+            val artistAffinity = HashMap<String, Int>()
+            for (session in sessions) {
+                if (!session.counted) continue
+                val artist = byId[session.songId]?.artistsText.orEmpty()
+                if (artist.isNotBlank()) artistAffinity[artist] = (artistAffinity[artist] ?: 0) + 1
+            }
+            val signals = SmartQueueRanker.Signals(
+                preferredArtists = profile.artists.mapTo(HashSet()) { it.name },
+                preferredSongs = profile.songs.mapTo(HashSet()) { it.id },
+                favoriteSongs = library.filter { it.likedAt != null }.mapTo(HashSet()) { it.id },
+                recentlyPlayed = sessions.take(40).mapTo(HashSet()) { it.songId },
+                artistAffinity = artistAffinity,
+                mutedSongs = IntelligencePreferences.less(preferences),
+                boostedSongs = IntelligencePreferences.more(preferences),
+                discoveryPercent = IntelligencePreferences.discovery(preferences)
+            )
+            fun MediaItem.track() = SmartQueueRanker.Track(
+                id = mediaId,
+                title = mediaMetadata.title?.toString().orEmpty(),
+                artist = mediaMetadata.artist?.toString().orEmpty()
+            )
+            val ranked = SmartQueueRanker.radioQueue(
+                candidates = available.map { it.track() },
+                current = player.currentMediaItem?.track(),
+                existingIds = inQueue,
+                signals = signals
+            )
+            val byMediaId = available.associateBy { it.mediaId }
+            ranked.mapNotNull { byMediaId[it.id] }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Library/history might be temporarily unavailable; provider order
+            // remains a valid, non-blocking fallback for continuous playback.
+            available.take(16)
+        }
+    }
+
     private fun maybeSavePlayerQueue() {
-        if (!isPersistentQueueEnabled) return
+        if (!isPersistentQueueEnabled || !queueReady || destroyed) return
 
         val mediaItems = player.currentTimeline.mediaItems
         val mediaItemIndex = player.currentMediaItemIndex
@@ -441,7 +538,7 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
                 position = if (index == mediaItemIndex) mediaItemPosition else null
             )
         }.let { queuedMediaItems ->
-            query {
+            it.vfsfitvnm.vimusic.transaction {
                 Database.clearQueue()
                 Database.insert(queuedMediaItems)
             }
@@ -449,17 +546,23 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
     }
 
     private fun maybeRestorePlayerQueue() {
-        if (!isPersistentQueueEnabled) return
+        if (!isPersistentQueueEnabled) { queueReady = true; return }
 
         query {
             val queuedSong = Database.queue()
-            Database.clearQueue()
 
-            if (queuedSong.isEmpty()) return@query
+
 
             val index = queuedSong.indexOfFirst { it.position != null }.coerceAtLeast(0)
 
             runBlocking(Dispatchers.Main) {
+                if (destroyed) return@runBlocking
+                queueReady = true
+                if (player.mediaItemCount != 0) {
+                    maybeSavePlayerQueue()
+                    return@runBlocking
+                }
+                if (!isPersistentQueueEnabled || queuedSong.isEmpty()) return@runBlocking
                 player.setMediaItems(
                     queuedSong.map { mediaItem ->
                         mediaItem.mediaItem.buildUpon()
@@ -492,7 +595,19 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         }
 
         if (loudnessEnhancer == null) {
-            loudnessEnhancer = LoudnessEnhancer(player.audioSessionId)
+            // Some devices ship without the LoudnessEnhancer audio effect; an
+            // unguarded constructor used to crash the service on media-item
+            // transitions. Disable normalization instead of crashing.
+            loudnessEnhancer = try {
+                LoudnessEnhancer(player.audioSessionId)
+            } catch (e: Exception) {
+                android.util.Log.w(
+                    "WEST_Player",
+                    "LoudnessEnhancer unavailable; volume normalization disabled",
+                    e
+                )
+                null
+            }
         }
 
         player.currentMediaItem?.mediaId?.let { songId ->
@@ -588,6 +703,7 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         }
 
     override fun onEvents(player: Player, events: Player.Events) {
+        if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_POSITION_DISCONTINUITY, Player.EVENT_PLAY_WHEN_READY_CHANGED)) maybeSavePlayerQueue()
         if (player.duration != C.TIME_UNSET) {
             mediaSession.setMetadata(
                 metadataBuilder
@@ -643,8 +759,11 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences, key: String?) {
         when (key) {
-            persistentQueueKey -> isPersistentQueueEnabled =
-                sharedPreferences.getBoolean(key, isPersistentQueueEnabled)
+            persistentQueueKey -> {
+                isPersistentQueueEnabled = sharedPreferences.getBoolean(key, true)
+                if (isPersistentQueueEnabled) maybeSavePlayerQueue()
+                else it.vfsfitvnm.vimusic.transaction { Database.clearQueue() }
+            }
 
             volumeNormalizationKey -> maybeNormalizeVolume()
 
@@ -657,6 +776,14 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
             isShowingThumbnailInLockscreenKey -> {
                 isShowingThumbnailInLockscreen = sharedPreferences.getBoolean(key, true)
                 maybeShowSongCoverInLockScreen()
+            }
+
+            smartContinueEnabledKey -> {
+                if (sharedPreferences.getBoolean(smartContinueEnabledKey, true)) {
+                    player.currentMediaItem?.mediaId?.let { id ->
+                        binder.setupRadio(NavigationEndpoint.Endpoint.Watch(videoId = id))
+                    }
+                } else binder.stopRadio()
             }
 
             trackLoopEnabledKey, queueLoopEnabledKey -> {
@@ -777,7 +904,13 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         return ResolvingDataSource.Factory(createCacheDataSource()) { dataSpec ->
             val videoId = dataSpec.key ?: error("A key must be set")
 
-            if (cache.isCached(videoId, dataSpec.position, chunkLength)) {
+            // The final cached segment can be shorter than the normal network chunk.
+            val cachedBytes = cache.getCachedLength(videoId, dataSpec.position, Long.MAX_VALUE - dataSpec.position)
+            val remaining = if (cachedBytes > 0) Database.knownContentLength(videoId)?.minus(dataSpec.position) else null
+            if (remaining != null && remaining > 0 && cachedBytes >= remaining) {
+                val length = if (dataSpec.length > 0) minOf(remaining, dataSpec.length) else remaining
+                dataSpec.subrange(0, length)
+            } else if (cachedBytes >= chunkLength) {
                 dataSpec
             } else {
                 when (videoId) {
@@ -917,7 +1050,50 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         private var radioJob: Job? = null
 
         var isLoadingRadio by mutableStateOf(false)
-            private set
+            internal set
+
+        /**
+         * A search tap starts a real queue immediately, ahead of any network request.
+         * User-selected result remains first; already-loaded results follow in order.
+         */
+        fun skipToNextOrDiscover() {
+            if (player.mediaItemCount > 1 && player.hasNextMediaItem()) {
+                pendingSmartSkipGeneration = null
+                player.forceSeekToNext()
+                return
+            }
+            if (player.currentMediaItem == null ||
+                !preferences.getBoolean(smartContinueEnabledKey, true)) return
+            // The user wants to skip now: if a network request is already running,
+            // keep exactly one pending skip instead of launching duplicate requests.
+            if (isLoadingRadio || radioRefillJob?.isActive == true) {
+                pendingSmartSkipGeneration = radioGeneration
+                return
+            }
+            if (radio != null) {
+                pendingSmartSkipGeneration = radioGeneration
+                maybeProcessRadio()
+                return
+            }
+            val currentId = player.currentMediaItem?.mediaId ?: return
+            setupRadio(NavigationEndpoint.Endpoint.Watch(videoId = currentId))
+            pendingSmartSkipGeneration = radioGeneration
+        }
+
+        fun playSmartQueue(selected: MediaItem, results: List<MediaItem> = emptyList()) {
+            stopRadio()
+            val options = SmartQueueRanker.searchQueue(
+                selected = SmartQueueRanker.Track(selected.mediaId),
+                visible = results.map { SmartQueueRanker.Track(it.mediaId) }
+            )
+            val byId = (listOf(selected) + results).associateBy { it.mediaId }
+            val media = options.mapNotNull { byId[it.id] }
+            if (media.isEmpty()) return
+            player.forcePlayFromBeginning(media)
+            if (preferences.getBoolean(smartContinueEnabledKey, true)) {
+                setupRadio(NavigationEndpoint.Endpoint.Watch(videoId = selected.mediaId))
+            }
+        }
 
         fun setBitmapListener(listener: ((Bitmap?) -> Unit)?) {
             bitmapProvider.listener = listener
@@ -956,42 +1132,58 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
             startRadio(endpoint = endpoint, justAdd = false)
 
         private fun startRadio(endpoint: NavigationEndpoint.Endpoint.Watch?, justAdd: Boolean) {
-            radioJob?.cancel()
-            radio = null
-            YouTubeRadio(
-                endpoint?.videoId,
-                endpoint?.playlistId,
-                endpoint?.playlistSetVideoId,
-                endpoint?.params
-            ).let {
-                isLoadingRadio = true
-                radioJob = coroutineScope.launch(Dispatchers.Main) {
-                    if (justAdd) {
-                        player.addMediaItems(it.process().drop(1))
-                    } else {
-                        player.forcePlayFromBeginning(it.process())
+            stopRadio()
+            if (endpoint == null || (endpoint.videoId == null && endpoint.playlistId == null && endpoint.playlistSetVideoId == null)) return
+            if (justAdd && !preferences.getBoolean(smartContinueEnabledKey, true)) return
+            val source = YouTubeRadio(
+                endpoint.videoId, endpoint.playlistId, endpoint.playlistSetVideoId, endpoint.params
+            )
+            val generation = radioGeneration
+            isLoadingRadio = true
+            radioJob = coroutineScope.launch(Dispatchers.Main) {
+                try {
+                    val page = source.process()
+                    if (generation != radioGeneration) return@launch
+                    val items = if (justAdd) rankedRadioMedia(page) else {
+                        page.filter { it.mediaId.isNotBlank() }.distinctBy { it.mediaId }
                     }
-                    radio = it
-                    isLoadingRadio = false
+                    if (generation != radioGeneration) return@launch
+                    if (justAdd) {
+                        if (items.isNotEmpty()) player.addMediaItems(items)
+                    } else if (items.isNotEmpty()) {
+                        player.forcePlayFromBeginning(items)
+                    }
+                    radio = source.takeIf { items.isNotEmpty() }
+                    maybeConsumePendingSmartSkip(generation)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    if (generation == radioGeneration) radio = null
+                } finally {
+                    if (generation == radioGeneration) isLoadingRadio = false
                 }
             }
         }
 
         fun stopRadio() {
+            radioGeneration++
+            pendingSmartSkipGeneration = null
             isLoadingRadio = false
             radioJob?.cancel()
+            radioRefillJob?.cancel()
             radio = null
         }
     }
 
     private class SessionCallback(
         private val player: Player,
-        private val coroutineScope: CoroutineScope
+        private val coroutineScope: CoroutineScope,
+        private val onNext: () -> Unit
     ) : MediaSession.Callback() {
         override fun onPlay() = player.play()
         override fun onPause() = player.pause()
         override fun onSkipToPrevious() = runCatching(player::forceSeekToPrevious).let { }
-        override fun onSkipToNext() = runCatching(player::forceSeekToNext).let { }
+        override fun onSkipToNext() = runCatching(onNext).let { }
         override fun onSeekTo(pos: Long) = player.seekTo(pos)
         override fun onStop() = player.pause()
         override fun onRewind() = player.seekToDefaultPosition()
@@ -1022,12 +1214,15 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         }
     }
 
-    private class NotificationActionReceiver(private val player: Player) : BroadcastReceiver() {
+    private class NotificationActionReceiver(
+        private val player: Player,
+        private val onNext: () -> Unit
+    ) : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 Action.pause.value -> player.pause()
                 Action.play.value -> player.play()
-                Action.next.value -> player.forceSeekToNext()
+                Action.next.value -> onNext()
                 Action.previous.value -> player.forceSeekToPrevious()
             }
         }

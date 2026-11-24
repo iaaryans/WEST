@@ -43,10 +43,6 @@ fun DatabaseSettings() {
     val context = LocalContext.current
     val (colorPalette) = LocalAppearance.current
 
-    val eventsCount by remember {
-        Database.eventsCount().distinctUntilChanged()
-    }.collectAsState(initial = 0)
-
     val backupLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.sqlite3")) { uri ->
             if (uri == null) return@rememberLauncherForActivityResult
@@ -94,22 +90,7 @@ fun DatabaseSettings() {
                     .asPaddingValues()
             )
     ) {
-        Header(title = "Database")
-
-        SettingsEntryGroupText(title = "CLEANUP")
-
-        SettingsEntry(
-            title = "Reset quick picks",
-            text = if (eventsCount > 0) {
-                "Delete $eventsCount playback events"
-            } else {
-                "Quick picks are cleared"
-            },
-            isEnabled = eventsCount > 0,
-            onClick = { query(Database::clearEvents) }
-        )
-
-        SettingsGroupSpacer()
+        Header(title = "Backup & restore")
 
         SettingsEntryGroupText(title = "BACKUP")
 

@@ -54,6 +54,18 @@ class MusicResponsiveListItemRendererMappingTest {
         {"text": "$text", "navigationEndpoint": {"watchEndpoint": {"videoId": "$videoId"}}}
     """.trimIndent()
 
+    @Test
+    fun `a browse link in a song title is skipped without discarding the shelf`() {
+        val row = decode("""
+            {"flexColumns": [
+                {"musicResponsiveListItemFlexColumnRenderer": {"text": {"runs": [
+                    {"text": "Browse", "navigationEndpoint": {"browseEndpoint": {"browseId": "UC123"}}}
+                ]}}}
+            ]}
+        """.trimIndent())
+        assertNull(Innertube.SongItem.from(row))
+    }
+
     // ------------------------------------------------------------------
     // A. Current search layout
     // ------------------------------------------------------------------

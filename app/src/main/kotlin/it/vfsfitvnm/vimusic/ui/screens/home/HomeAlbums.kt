@@ -49,7 +49,7 @@ import it.vfsfitvnm.vimusic.utils.rememberPreference
 @Composable
 fun HomeAlbums(
     onAlbumClick: (Album) -> Unit,
-    onSearchClick: () -> Unit,
+
 ) {
     val (colorPalette) = LocalAppearance.current
 
@@ -136,8 +136,6 @@ fun HomeAlbums(
 
         FloatingActionsContainerWithScrollToTop(
             lazyListState = lazyListState,
-            iconId = R.drawable.search,
-            onClick = onSearchClick
         )
     }
 }

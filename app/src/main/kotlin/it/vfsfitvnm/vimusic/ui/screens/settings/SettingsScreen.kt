@@ -1,4 +1,12 @@
 package it.vfsfitvnm.vimusic.ui.screens.settings
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import it.vfsfitvnm.vimusic.LocalPlayerAwareWindowInsets
+import it.vfsfitvnm.vimusic.ui.components.themed.Header
+import it.vfsfitvnm.vimusic.ui.components.themed.IconButton
+
 
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -47,28 +55,36 @@ fun SettingsScreen() {
         globalRoutes()
 
         host {
-            Scaffold(
-                topIconButtonId = R.drawable.chevron_back,
-                onTopIconButtonClick = pop,
-                tabIndex = tabIndex,
-                onTabChanged = onTabChanged,
-                tabColumnContent = { Item ->
-                    Item(0, "Appearance", R.drawable.color_palette)
-                    Item(1, "Player", R.drawable.play)
-                    Item(2, "Cache", R.drawable.server)
-                    Item(3, "Database", R.drawable.server)
-                    Item(4, "Other", R.drawable.shapes)
-                    Item(5, "About", R.drawable.information)
-                }
-            ) { currentTabIndex ->
-                saveableStateHolder.SaveableStateProvider(currentTabIndex) {
-                    when (currentTabIndex) {
-                        0 -> AppearanceSettings()
-                        1 -> PlayerSettings()
-                        2 -> CacheSettings()
-                        3 -> DatabaseSettings()
-                        4 -> OtherSettings()
-                        5 -> About()
+            val sections = listOf("Playback & audio", "Appearance & motion", "Storage & backup",
+                "Privacy & history", "Devices & background playback", "About & support")
+            val hints = listOf("Queue, playback and equalizer", "Theme, text and animations", "Cached media, export and restore",
+                "Search history and recommendations", "Android Auto and background service", "Version, feedback and support")
+            val insets = LocalPlayerAwareWindowInsets.current
+            Column(Modifier.fillMaxSize().padding(insets.asPaddingValues())) {
+                val goBack: () -> Unit = { if (tabIndex == 0) pop() else if (tabIndex >= 7) onTabChanged(3) else onTabChanged(0) }
+                androidx.activity.compose.BackHandler(enabled = tabIndex != 0, onBack = goBack)
+                IconButton(goBack, R.drawable.chevron_back, LocalAppearance.current.colorPalette.text,
+                    Modifier.padding(12.dp).size(24.dp), description = "Back")
+                CompositionLocalProvider(LocalPlayerAwareWindowInsets provides WindowInsets(0, 0, 0, 0)) {
+                    saveableStateHolder.SaveableStateProvider(tabIndex) {
+                        when (tabIndex) {
+                            0 -> Column(Modifier.verticalScroll(rememberScrollState())) {
+                                Header(title = "Settings")
+                                sections.forEachIndexed { i, label -> SettingsEntry(label, hints[i], onClick = { onTabChanged(i + 1) }) }
+                            }
+                            1 -> PlayerSettings()
+                            2 -> AppearanceSettings()
+                            3 -> Column(Modifier.verticalScroll(rememberScrollState())) {
+                                Header(title = "Storage & backup")
+                                SettingsEntry("Storage", "Manage cached songs and artwork", onClick = { onTabChanged(7) })
+                                SettingsEntry("Backup & restore", "Export or restore your music database", onClick = { onTabChanged(8) })
+                            }
+                            4 -> PrivacySettings()
+                            5 -> OtherSettings()
+                            6 -> About()
+                            7 -> CacheSettings()
+                            8 -> DatabaseSettings()
+                        }
                     }
                 }
             }

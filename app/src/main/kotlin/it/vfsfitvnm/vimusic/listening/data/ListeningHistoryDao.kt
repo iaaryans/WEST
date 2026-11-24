@@ -35,6 +35,10 @@ interface ListeningHistoryDao {
     @Query("SELECT id, songId, timestamp, endedAt, playedMs, counted FROM ListeningHistory WHERE timestamp >= :from AND timestamp < :to")
     fun sessionsBetween(from: Long, to: Long): Flow<List<ListeningSessionRow>>
 
+    /** Bound history access prevents ranking from loading the entire listening database. */
+    @Query("SELECT id, songId, timestamp, endedAt, playedMs, counted FROM ListeningHistory ORDER BY timestamp DESC, id DESC LIMIT :limit")
+    fun recentForIntelligence(limit: Int): Flow<List<ListeningSessionRow>>
+
     @Query("SELECT timestamp, playedMs, counted FROM ListeningHistory WHERE timestamp >= :from AND timestamp < :to")
     fun pointsBetween(from: Long, to: Long): Flow<List<ListeningPointRow>>
 

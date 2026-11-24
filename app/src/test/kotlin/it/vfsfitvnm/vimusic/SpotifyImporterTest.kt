@@ -16,7 +16,7 @@ import org.junit.Test
 /**
  * The Spotify import's parsing half: what counts as a playlist link, what the
  * embed page says, and what the pagination responses say. Ported from the
- * BitChord importer's behaviour; the payloads here are the shapes that
+ * the playlist importer's behaviour; the payloads here are the shapes that
  * endpoint actually returns (trackList entries with title/subtitle,
  * pathfinder items under itemV2.data, totalCount as a string).
  */
@@ -253,6 +253,37 @@ class SpotifyImporterTest {
     }
 
     // ---- Candidate mapping ----------------------------------------------------
+
+    @Test
+    fun `live version requires review and the studio version can be selected automatically`() {
+        val target = SpotifyImportTrack("North", "Denise")
+        val live = songItem("live", "North (Live)", listOf("Denise"))
+        val studio = songItem("studio", "North", listOf("Denise"))
+        val doubtful = SpotifyImporter.reviewMatch(target, listOf(live), listOf(live, live))
+        assertNull(doubtful.selected)
+        assertEquals(listOf(live), doubtful.candidates)
+        assertEquals(studio, SpotifyImporter.reviewMatch(target, listOf(live, studio), listOf(live, studio)).selected)
+    }
+
+    @Test
+    fun `language exclusions never silently select the first result`() {
+        val candidate = songItem("one", "North", listOf("Denise"))
+        val row = SpotifyImporter.reviewMatch(SpotifyImportTrack("North", "Denise"), emptyList(), listOf(candidate))
+        assertNull(row.selected)
+        assertEquals(listOf(candidate), row.candidates)
+    }
+
+    @Test
+    fun `a remembered live recording takes priority and its absence requires review`() {
+        val target = SpotifyImportTrack("North", "Denise")
+        val studio = songItem("studio", "North", listOf("Denise"))
+        val live = songItem("live", "North (Live)", listOf("Denise"))
+        val both = listOf(studio, live)
+        assertEquals(live, SpotifyImporter.reviewMatch(target, both, both, "live").selected)
+        val missing = SpotifyImporter.reviewMatch(target, listOf(studio), listOf(studio), "live")
+        assertNull(missing.selected)
+        assertEquals(listOf(studio), missing.candidates)
+    }
 
     private fun songItem(
         videoId: String,

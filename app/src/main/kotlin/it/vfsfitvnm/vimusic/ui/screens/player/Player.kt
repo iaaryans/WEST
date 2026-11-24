@@ -1,4 +1,12 @@
 package it.vfsfitvnm.vimusic.ui.screens.player
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+
+import androidx.compose.runtime.LaunchedEffect
+import it.vfsfitvnm.vimusic.ui.components.themed.LocalReducedMotion
+import it.vfsfitvnm.vimusic.ui.components.themed.ConfirmationDialog
+import it.vfsfitvnm.vimusic.ui.screens.home.ActionLabel
+
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -6,7 +14,34 @@ import android.media.audiofx.AudioEffect
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.with
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import it.vfsfitvnm.vimusic.utils.forceSeekToPrevious
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
+import coil.request.ImageRequest
+import coil.size.Precision
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +68,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,7 +97,6 @@ import it.vfsfitvnm.vimusic.ui.components.themed.BaseMediaItemMenu
 import it.vfsfitvnm.vimusic.ui.components.themed.IconButton
 import it.vfsfitvnm.vimusic.ui.styling.Dimensions
 import it.vfsfitvnm.vimusic.ui.styling.LocalAppearance
-import it.vfsfitvnm.vimusic.ui.styling.collapsedPlayerProgressBar
 import it.vfsfitvnm.vimusic.ui.styling.px
 import it.vfsfitvnm.vimusic.utils.DisposableListener
 import it.vfsfitvnm.vimusic.utils.forceSeekToNext
@@ -73,7 +108,7 @@ import it.vfsfitvnm.vimusic.utils.semiBold
 import it.vfsfitvnm.vimusic.utils.shouldBePlaying
 import it.vfsfitvnm.vimusic.utils.thumbnail
 import it.vfsfitvnm.vimusic.utils.toast
-import kotlin.math.absoluteValue
+import kotlinx.coroutines.launch
 
 @ExperimentalFoundationApi
 @ExperimentalAnimationApi
@@ -113,9 +148,31 @@ fun Player(
         }
     }
 
+    val player = binder.player
+    val reduce = LocalReducedMotion.current
+    var undo by remember(player) { mutableStateOf<QueueSnapshot?>(null) }
+    val previous = undo
+    if (previous != null && nullableMediaItem == null) {
+        ConfirmationDialog(text = "Queue cleared", confirmText = "Undo", cancelText = "Done",
+            onDismiss = { undo = null }, onConfirm = {
+                undo = null
+                if (player.mediaItemCount == 0) {
+                    player.setMediaItems(previous.items, previous.index, previous.position)
+                    player.prepare()
+                    player.playWhenReady = previous.playing
+                }
+            })
+    }
+    LaunchedEffect(nullableMediaItem) { if (nullableMediaItem != null) undo = null }
     val mediaItem = nullableMediaItem ?: return
 
-    val positionAndDuration by binder.player.positionAndDurationState()
+    val swipeScope = rememberCoroutineScope()
+    val dockSwipe = remember { Animatable(0f) }
+
+    // Keep the high-frequency progress observation out of the sheet's composition.
+    // Collapsed progress reads State in the draw phase; expanded controls read
+    // it only in their own composable lambda instead of rebuilding the player.
+    val positionAndDurationState = binder.player.positionAndDurationState()
 
     val windowInsets = WindowInsets.systemBars
 
@@ -126,29 +183,66 @@ fun Player(
         layoutState.collapseSoft()
     }
 
+    // Store each cover in sheet-local pixels so dragging the sheet moves both
+    // endpoints together. The overlay is above both the player and the dock.
+    val density = LocalDensity.current
+    var dock by remember(layoutState) { mutableStateOf<Rect?>(null) }
+    var sleeve by remember(layoutState) { mutableStateOf<Rect?>(null) }
+    val movingCover by remember(layoutState) {
+        derivedStateOf { layoutState.progress > 0f && layoutState.progress < 1f && dock != null && sleeve != null }
+    }
+    fun Modifier.captureCover(save: (Rect) -> Unit) = onGloballyPositioned { coordinates ->
+        val sheetY = with(density) { (layoutState.expandedBound - layoutState.value).roundToPx() }
+        val origin = coordinates.positionInRoot() - Offset(0f, sheetY.toFloat())
+        save(Rect(origin.x, origin.y, origin.x + coordinates.size.width, origin.y + coordinates.size.height))
+    }
+
     BottomSheet(
         state = layoutState,
         modifier = modifier,
-        onDismiss = {
-            binder.stopRadio()
-            binder.player.clearMediaItems()
-        },
         collapsedContent = {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.Top,
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .background(colorPalette.background1)
                     .fillMaxSize()
                     .padding(horizontalBottomPaddingValues)
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .graphicsLayer { translationX = if (reduce) 0f else dockSwipe.value }
+                    .pointerInput(binder.player, reduce) {
+                        var swipe = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { swipe = 0f },
+                            onHorizontalDrag = { _, delta ->
+                                swipe += delta
+                                val resisted = (swipe * 0.12f).coerceIn(-16.dp.toPx(), 16.dp.toPx())
+                                if (!reduce) swipeScope.launch { dockSwipe.snapTo(resisted) }
+                            },
+                            onDragEnd = {
+                                val threshold = 72.dp.toPx()
+                                if (swipe < -threshold) binder.skipToNextOrDiscover()
+                                if (swipe > threshold) binder.player.forceSeekToPrevious()
+                                swipeScope.launch {
+                                    dockSwipe.animateTo(0f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMediumLow))
+                                }
+                            },
+                            onDragCancel = {
+                                swipeScope.launch { dockSwipe.animateTo(0f, spring()) }
+                            }
+                        )
+                    }
+                    .background(colorPalette.background1)
+                    .border(1.dp, colorPalette.text.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
                     .drawBehind {
+                        val positionAndDuration = positionAndDurationState.value
                         val progress =
-                            positionAndDuration.first.toFloat() / positionAndDuration.second.absoluteValue
+                            if (positionAndDuration.second > 0) (positionAndDuration.first.toFloat() / positionAndDuration.second).coerceIn(0f, 1f) else 0f
 
                         drawLine(
-                            color = colorPalette.collapsedPlayerProgressBar,
-                            start = Offset(x = 0f, y = 1.dp.toPx()),
-                            end = Offset(x = size.width * progress, y = 1.dp.toPx()),
+                            color = colorPalette.accent,
+                            start = Offset(x = 0f, y = size.height - 1.dp.toPx()),
+                            end = Offset(x = size.width * progress, y = size.height - 1.dp.toPx()),
                             strokeWidth = 2.dp.toPx()
                         )
                     }
@@ -163,34 +257,56 @@ fun Player(
                     modifier = Modifier
                         .height(Dimensions.collapsedPlayer)
                 ) {
-                    AsyncImage(
-                        model = mediaItem.mediaMetadata.artworkUri.thumbnail(Dimensions.thumbnails.song.px),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                    Box(
                         modifier = Modifier
-                            .clip(thumbnailShape)
-                            .size(48.dp)
-                    )
+                            .size(40.dp)
+                            .captureCover { dock = it }
+                            .alpha(if (movingCover) 0f else 1f)
+                            .clip(RoundedCornerShape(8.dp))
+                    ) {
+                        Crossfade(
+                            targetState = mediaItem.mediaMetadata.artworkUri,
+                            animationSpec = tween(durationMillis = if (reduce) 0 else 280)
+                        ) { artworkUri ->
+                            AsyncImage(
+                                model = artworkUri.thumbnail(Dimensions.thumbnails.song.px),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
                 }
 
-                Column(
-                    verticalArrangement = Arrangement.Center,
+                AnimatedContent(
+                    targetState = Triple(
+                        mediaItem.mediaId,
+                        mediaItem.mediaMetadata.title?.toString().orEmpty(),
+                        mediaItem.mediaMetadata.artist?.toString().orEmpty()
+                    ),
+                    transitionSpec = {
+                        if (reduce) EnterTransition.None with ExitTransition.None else
+                        (slideInHorizontally(tween(270)) { it / 8 } + fadeIn(tween(220))) with
+                            (slideOutHorizontally(tween(210)) { -it / 8 } + fadeOut(tween(170)))
+                    },
                     modifier = Modifier
                         .height(Dimensions.collapsedPlayer)
                         .weight(1f)
-                ) {
-                    BasicText(
-                        text = mediaItem.mediaMetadata.title?.toString() ?: "",
-                        style = typography.xs.semiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    BasicText(
-                        text = mediaItem.mediaMetadata.artist?.toString() ?: "",
-                        style = typography.xs.semiBold.secondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                ) { metadata ->
+                    Column(verticalArrangement = Arrangement.Center, modifier = Modifier.fillMaxSize()) {
+                        BasicText(
+                            text = metadata.second,
+                            style = typography.xs.semiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        BasicText(
+                            text = metadata.third,
+                            style = typography.xs.semiBold.secondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 Spacer(
@@ -225,7 +341,7 @@ fun Player(
                     IconButton(
                         icon = R.drawable.play_skip_forward,
                         color = colorPalette.text,
-                        onClick = binder.player::forceSeekToNext,
+                        onClick = binder::skipToNextOrDiscover,
                         modifier = Modifier
                             .padding(horizontal = 4.dp, vertical = 8.dp)
                             .size(20.dp)
@@ -237,6 +353,28 @@ fun Player(
                         .width(2.dp)
                 )
             }
+        },
+        transitionOverlay = {
+            val from = dock
+            val to = sleeve
+            if (movingCover && from != null && to != null && to.width > 0f && to.height > 0f) {
+                AsyncImage(
+                    model = mediaItem.mediaMetadata.artworkUri.thumbnail((Dimensions.thumbnails.player.song - 64.dp).px),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(with(density) { to.width.toDp() }, with(density) { to.height.toDp() })
+                        .graphicsLayer {
+                            val progress = layoutState.progress.coerceIn(0f, 1f)
+                            transformOrigin = TransformOrigin(0f, 0f)
+                            translationX = from.left + (to.left - from.left) * progress
+                            translationY = from.top + (to.top - from.top) * progress
+                            scaleX = (from.width + (to.width - from.width) * progress) / to.width
+                            scaleY = (from.height + (to.height - from.height) * progress) / to.height
+                        }
+                        .clip(thumbnailShape)
+                )
+            }
         }
     ) {
         var isShowingLyrics by rememberSaveable {
@@ -246,14 +384,38 @@ fun Player(
         var isShowingStatsForNerds by rememberSaveable {
             mutableStateOf(false)
         }
+        var isImmersiveOpen by rememberSaveable { mutableStateOf(false) }
+        if (isImmersiveOpen) {
+            val positionAndDuration = positionAndDurationState.value
+            ImmersivePlayerDialog(
+                player = player,
+                mediaItem = mediaItem,
+                playing = shouldBePlaying,
+                position = positionAndDuration.first,
+                duration = positionAndDuration.second,
+                onDismiss = { isImmersiveOpen = false }
+            )
+        }
 
         val playerBottomSheetState = rememberBottomSheetState(
             64.dp + horizontalBottomPaddingValues.calculateBottomPadding(),
             layoutState.expandedBound
         )
 
-        val containerModifier = Modifier
-            .background(colorPalette.background1)
+        val context = LocalContext.current
+        val artwork = mediaItem.mediaMetadata.artworkUri
+        val wash = remember(artwork, context) {
+            ImageRequest.Builder(context).data(artwork).size(12, 12)
+                .precision(Precision.EXACT).crossfade(600).build()
+        }
+        Box(Modifier.fillMaxSize().background(colorPalette.background0)) {
+            AsyncImage(model = wash, contentDescription = null, contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().alpha(if (colorPalette.isDark) 0.42f else 0.24f))
+            Spacer(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(
+                colorPalette.background0.copy(alpha = 0.08f), colorPalette.background0.copy(alpha = 0.88f)
+            ))))
+        }
+        val containerModifier = Modifier.fillMaxSize()
             .padding(
                 windowInsets
                     .only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
@@ -267,12 +429,15 @@ fun Player(
                 onShowLyrics = { isShowingLyrics = it },
                 isShowingStatsForNerds = isShowingStatsForNerds,
                 onShowStatsForNerds = { isShowingStatsForNerds = it },
+                artworkModifier = Modifier.captureCover { sleeve = it }.alpha(if (movingCover) 0f else 1f),
+                shouldBePlaying = shouldBePlaying,
                 modifier = modifier
                     .nestedScroll(layoutState.preUpPostDownNestedScrollConnection)
             )
         }
 
         val controlsContent: @Composable (modifier: Modifier) -> Unit = { modifier ->
+            val positionAndDuration = positionAndDurationState.value
             Controls(
                 mediaId = mediaItem.mediaId,
                 title = mediaItem.mediaMetadata.title?.toString(),
@@ -331,7 +496,7 @@ fun Player(
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = containerModifier
-                    .padding(top = 54.dp)
+                    .padding(top = 8.dp)
             ) {
                 // Back button row at top
                 Row(
@@ -381,15 +546,30 @@ fun Player(
 
         Queue(
             layoutState = playerBottomSheetState,
+            onClear = {
+                if (player.mediaItemCount > 0) {
+                    undo = QueueSnapshot(List(player.mediaItemCount, player::getMediaItemAt),
+                        player.currentMediaItemIndex.coerceIn(0, player.mediaItemCount - 1),
+                        player.currentPosition.coerceAtLeast(0), player.playWhenReady)
+                    binder.stopRadio()
+                    player.pause()
+                    player.clearMediaItems()
+                    layoutState.dismiss()
+                }
+            },
             content = {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
                         .padding(horizontal = 8.dp)
                         .fillMaxHeight()
                 ) {
+                    ActionLabel("Lyrics") { isShowingLyrics = !isShowingLyrics; isShowingStatsForNerds = false }
+                    ActionLabel("Immersive") { isImmersiveOpen = true }
+                    ActionLabel("Queue", playerBottomSheetState::expandSoft)
                     IconButton(
                         icon = R.drawable.ellipsis_horizontal,
                         color = colorPalette.text,
@@ -398,6 +578,7 @@ fun Player(
                                 PlayerMenu(
                                     onDismiss = menuState::hide,
                                     mediaItem = mediaItem,
+                                    onTrackInfo = { isShowingStatsForNerds = true; isShowingLyrics = false },
                                     binder = binder
                                 )
                             }
@@ -425,6 +606,7 @@ fun Player(
 private fun PlayerMenu(
     binder: PlayerService.Binder,
     mediaItem: MediaItem,
+    onTrackInfo: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -434,6 +616,7 @@ private fun PlayerMenu(
 
     BaseMediaItemMenu(
         mediaItem = mediaItem,
+        onTrackInfo = onTrackInfo,
         onStartRadio = {
             binder.stopRadio()
             binder.player.seamlessPlay(mediaItem)
@@ -456,3 +639,5 @@ private fun PlayerMenu(
         onDismiss = onDismiss
     )
 }
+
+private data class QueueSnapshot(val items: List<MediaItem>, val index: Int, val position: Long, val playing: Boolean)

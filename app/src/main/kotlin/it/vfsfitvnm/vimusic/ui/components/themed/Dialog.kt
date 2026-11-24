@@ -226,7 +226,7 @@ inline fun DefaultDialog(
                 .padding(all = 48.dp)
                 .background(
                     color = colorPalette.background1,
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(20.dp)
                 )
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             content = content
@@ -250,7 +250,7 @@ inline fun <T> ValueSelectorDialog(
         Column(
             modifier = modifier
                 .padding(all = 48.dp)
-                .background(color = colorPalette.background1, shape = RoundedCornerShape(8.dp))
+                .background(color = colorPalette.background1, shape = RoundedCornerShape(20.dp))
                 .padding(vertical = 16.dp),
         ) {
             BasicText(

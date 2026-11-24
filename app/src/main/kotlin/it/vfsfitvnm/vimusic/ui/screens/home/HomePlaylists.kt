@@ -1,4 +1,16 @@
 package it.vfsfitvnm.vimusic.ui.screens.home
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.semantics.Role
+import it.vfsfitvnm.vimusic.utils.semiBold
+
 
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.LinearEasing
@@ -58,17 +70,16 @@ import it.vfsfitvnm.vimusic.utils.rememberPreference
 @ExperimentalFoundationApi
 @Composable
 fun HomePlaylists(
-    onBuiltInPlaylist: (BuiltInPlaylist) -> Unit,
+
     onPlaylistClick: (Playlist) -> Unit,
     onImportFromSpotify: () -> Unit,
-    onSearchClick: () -> Unit,
+
 ) {
-    val (colorPalette) = LocalAppearance.current
+    val (colorPalette, typography) = LocalAppearance.current
 
     var isCreatingANewPlaylist by rememberSaveable {
         mutableStateOf(false)
     }
-
     if (isCreatingANewPlaylist) {
         TextFieldDialog(
             hintText = "Enter the playlist name",
@@ -119,6 +130,7 @@ fun HomePlaylists(
         ) {
             item(key = "header", contentType = 0, span = { GridItemSpan(maxLineSpan) }) {
                 Header(title = "Playlists") {
+                    HeaderIconButton(icon = R.drawable.add, color = colorPalette.accent, description = "New playlist", onClick = { isCreatingANewPlaylist = true })
                     Spacer(
                         modifier = Modifier
                             .weight(1f)
@@ -157,66 +169,26 @@ fun HomePlaylists(
                 }
             }
 
-            item(key = "newPlaylist") {
-                PlaylistItem(
-                    icon = R.drawable.add,
-                    colorTint = colorPalette.accent,
-                    name = "New Playlist",
-                    songCount = null,
-                    thumbnailSizeDp = thumbnailSizeDp,
-                    alternative = true,
+            item(key = "spotify-import", span = { GridItemSpan(maxLineSpan) }) {
+                Row(
                     modifier = Modifier
-                        .clickable(onClick = { isCreatingANewPlaylist = true })
-                        .animateItemPlacement()
-                )
-            }
-
-            item(key = "spotifyImport") {
-                PlaylistItem(
-                    thumbnailContent = { modifier ->
-                        Image(
-                            painter = painterResource(R.drawable.spotify_logo),
-                            contentDescription = null,
-                            modifier = modifier
-                        )
-                    },
-                    songCount = null,
-                    name = "Import from Spotify",
-                    channelName = null,
-                    thumbnailSizeDp = thumbnailSizeDp,
-                    alternative = true,
-                    modifier = Modifier
-                        .clickable(onClick = onImportFromSpotify)
-                        .animateItemPlacement()
-                )
-            }
-
-            item(key = "favorites") {
-                PlaylistItem(
-                    icon = R.drawable.heart,
-                    colorTint = colorPalette.red,
-                    name = "Favorites",
-                    songCount = null,
-                    thumbnailSizeDp = thumbnailSizeDp,
-                    alternative = true,
-                    modifier = Modifier
-                        .clickable(onClick = { onBuiltInPlaylist(BuiltInPlaylist.Favorites) })
-                        .animateItemPlacement()
-                )
-            }
-
-            item(key = "offline") {
-                PlaylistItem(
-                    icon = R.drawable.airplane,
-                    colorTint = colorPalette.blue,
-                    name = "Offline",
-                    songCount = null,
-                    thumbnailSizeDp = thumbnailSizeDp,
-                    alternative = true,
-                    modifier = Modifier
-                        .clickable(onClick = { onBuiltInPlaylist(BuiltInPlaylist.Offline) })
-                        .animateItemPlacement()
-                )
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(colorPalette.background1)
+                        .clickable(role = Role.Button, onClick = onImportFromSpotify)
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Image(painterResource(R.drawable.spotify_logo), null, Modifier.size(40.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        BasicText("Import from Spotify", style = typography.s.semiBold.copy(color = colorPalette.text))
+                        BasicText("Paste a public playlist link", style = typography.xs.copy(color = colorPalette.textSecondary))
+                    }
+                    Image(painterResource(R.drawable.chevron_forward), null, Modifier.size(18.dp),
+                        colorFilter = ColorFilter.tint(colorPalette.textSecondary))
+                }
             }
 
             items(items = items, key = { it.playlist.id }) { playlistPreview ->
@@ -234,8 +206,6 @@ fun HomePlaylists(
 
         FloatingActionsContainerWithScrollToTop(
             lazyGridState = lazyGridState,
-            iconId = R.drawable.search,
-            onClick = onSearchClick
         )
     }
 }

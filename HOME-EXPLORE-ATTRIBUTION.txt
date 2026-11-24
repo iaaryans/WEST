@@ -1,0 +1,22 @@
+WEST Home / Listen Now — source attribution and compatibility
+
+Reference: BitChord project, supplied as BitChord-main(3).zip
+Upstream: https://github.com/kushagrasinghx/BitChord
+Reference files:
+  sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/HomeScreen.kt
+  sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/TopPicksShelf.kt
+
+The WEST Home redesign follows the reference's layout concepts: a prominent
+Listen Now header, portrait artwork-backed Top Picks cards, four songs per
+horizontally paged Recents column, and horizontal album/artist/playlist shelves.
+The implementation is written against WEST's existing Compose components,
+Innertube search, Media3 queue controller and WEST Intelligence profile.
+BitChord code must not be assumed interchangeable with WEST modules.
+
+The supplied BitChord project is distributed under GNU GPL v3. WEST also
+includes a GNU GPL v3 LICENSE. Preserve applicable GPL notices, attribution,
+and source-distribution obligations in any redistributed modified source or APK.
+
+WEST-specific changes: original WEST branding; Moodspace remains ONLY its own
+bottom-navigation tab, not a home shortcut; songs start Hybrid Smart Queue;
+Home retains Insights, Settings, timed mix, Spotify import and offline shortcuts.

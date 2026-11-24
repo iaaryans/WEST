@@ -1,4 +1,6 @@
 package it.vfsfitvnm.vimusic.ui.screens.player
+import it.vfsfitvnm.vimusic.ui.components.themed.LocalReducedMotion
+
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentScope
@@ -6,6 +8,9 @@ import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -23,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -52,7 +58,9 @@ fun Thumbnail(
     onShowLyrics: (Boolean) -> Unit,
     isShowingStatsForNerds: Boolean,
     onShowStatsForNerds: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    shouldBePlaying: Boolean = false,
+    modifier: Modifier = Modifier,
+    artworkModifier: Modifier = Modifier
 ) {
     val binder = LocalPlayerServiceBinder.current
     val player = binder?.player ?: return
@@ -86,11 +94,16 @@ fun Thumbnail(
     }
 
     val window = nullableWindow ?: return
+    val reduce = LocalReducedMotion.current
+    val artworkScale by animateFloatAsState(
+        targetValue = if (shouldBePlaying && !reduce) 1.025f else 1f,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessVeryLow)
+    )
 
     AnimatedContent(
         targetState = window,
         transitionSpec = {
-            val duration = 500
+            val duration = if (reduce) 0 else 200
             val slideDirection =
                 if (targetState.firstPeriodIndex > initialState.firstPeriodIndex) AnimatedContentScope.SlideDirection.Left else AnimatedContentScope.SlideDirection.Right
 
@@ -98,22 +111,12 @@ fun Thumbnail(
                 targetContentEnter = slideIntoContainer(
                     towards = slideDirection,
                     animationSpec = tween(duration)
-                ) + fadeIn(
-                    animationSpec = tween(duration)
-                ) + scaleIn(
-                    initialScale = 0.85f,
-                    animationSpec = tween(duration)
-                ),
+                ) + fadeIn(animationSpec = tween(duration)),
                 initialContentExit = slideOutOfContainer(
                     towards = slideDirection,
                     animationSpec = tween(duration)
-                ) + fadeOut(
-                    animationSpec = tween(duration)
-                ) + scaleOut(
-                    targetScale = 0.85f,
-                    animationSpec = tween(duration)
-                ),
-                sizeTransform = SizeTransform(clip = false)
+                ) + fadeOut(animationSpec = tween(duration)),
+                sizeTransform = SizeTransform(clip = true)
             )
         },
         contentAlignment = Alignment.Center
@@ -121,6 +124,7 @@ fun Thumbnail(
         Box(
             modifier = modifier
                 .aspectRatio(1f)
+                .then(artworkModifier)
                 .clip(LocalAppearance.current.thumbnailShape)
                 .size(thumbnailSizeDp)
         ) {
@@ -129,6 +133,7 @@ fun Thumbnail(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
+                    .graphicsLayer { scaleX = artworkScale; scaleY = artworkScale }
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = { onShowLyrics(true) },

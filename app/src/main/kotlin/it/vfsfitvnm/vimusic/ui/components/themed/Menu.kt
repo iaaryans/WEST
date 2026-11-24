@@ -1,6 +1,8 @@
 package it.vfsfitvnm.vimusic.ui.components.themed
 
 import androidx.annotation.DrawableRes
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -35,10 +37,11 @@ inline fun Menu(
 
     Column(
         modifier = modifier
-            .padding(top = 48.dp)
+            .padding(start = 8.dp, end = 8.dp, top = 48.dp)
+            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+            .background(colorPalette.background1)
             .verticalScroll(rememberScrollState())
             .fillMaxWidth()
-            .background(colorPalette.background1)
             .padding(top = 2.dp)
             .padding(vertical = 8.dp)
             .navigationBarsPadding(),

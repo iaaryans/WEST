@@ -51,10 +51,9 @@ fun Innertube.SongItem.Companion.from(renderer: MusicResponsiveListItemRenderer)
         column.musicResponsiveListItemFlexColumnRenderer?.text?.runs ?: emptyList()
     }
 
-    val info: Innertube.Info<NavigationEndpoint.Endpoint.Watch>? = flexRuns
-        .getOrNull(0)
-        ?.getOrNull(0)
-        ?.let { Innertube.Info<NavigationEndpoint.Endpoint.Watch>(it) }
+    val title = flexRuns.firstOrNull()?.firstOrNull() ?: return null
+    val endpoint = title.navigationEndpoint?.watchEndpoint ?: return null
+    if (endpoint.videoId.isNullOrBlank()) return null
 
     // Every run that can carry byline data: all columns after the title
     // column plus the fixed columns, concatenated in response order.
@@ -80,7 +79,7 @@ fun Innertube.SongItem.Companion.from(renderer: MusicResponsiveListItemRenderer)
         ?.text
 
     return Innertube.SongItem(
-        info = info,
+        info = Innertube.Info(title.text, endpoint),
         authors = authors,
         durationText = durationText,
         album = bylineRuns
@@ -92,5 +91,5 @@ fun Innertube.SongItem.Companion.from(renderer: MusicResponsiveListItemRenderer)
             ?.thumbnail
             ?.thumbnails
             ?.lastOrNull()
-    ).takeIf { it.info?.endpoint?.videoId != null }
+    )
 }

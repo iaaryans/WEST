@@ -1,0 +1,49 @@
+WEST — Smooth UI / Animation Optimization
+Source basis: WEST-BitChord-Style-Home-Moodspace-Explore-Full-Source-No-APK-With-Git.zip
+
+Changes (no user-facing features removed):
+- BrowseChrome.kt: switch to a single incoming content tree on tab changes. Previously
+  AnimatedContent composed the outgoing heavy Home/Moodspace and incoming heavy screen
+  at the same time. Now only the incoming screen fades/slides 9px in ~170ms.
+  Tab selection tint and scale have short, damped motion. Reduced motion is honored.
+- MainActivity.kt: automatically honor reduced-motion rendering on low-RAM devices.
+- MainApplication.kt: disable global bitmap crossfades to avoid dozens of overlapping
+  GPU alpha layers during image-heavy scrolling.
+- SmoothArtwork.kt: request appropriately sized, stable Coil image models with bounded
+  decode dimensions, hardware bitmaps and no repeated image-load crossfades.
+- PressMotion.kt: add brief, damping-controlled tap-scale motion for visible Home
+  portrait cards and Moodspace cards only. No continuous idle animations.
+- MoodspaceScreen.kt: memoize the category grid rows, preserve scroll state when
+  returning to tabs, return immediately to the top when opening/closing a category,
+  and stop collecting full Intelligence ranking data while just browsing cards.
+  Deliver music results incrementally after each search query.
+- MusicBrowseCache.kt: cache feed results across tab switches, coalesce identical
+  simultaneous lookups, bound stored entries and network concurrency (two category
+  artwork lookups), and support manual refresh to bypass cached results.
+- QuickPicks.kt and related Home shelves: memoize recents, pages and prepared queue
+  inputs; apply stable page keys, cache discovery searches and deliver partial results.
+- SeekBar.kt: playback position updates now change graphics-layer scale instead of
+  remeasuring the progress fill width every playback tick; marker drawing is bounded.
+- Player/Thumbnail.kt: reduce expensive image transition transforms and duration.
+
+Validation:
+- Standalone Kotlin tests for TimedLruCache passed (expiry, LRU eviction, invalidation).
+- Kotlin parser scan reported no syntax-token errors in the changed screen modules;
+  unlinked Compose/Android classes prevented complete compilation.
+- Android Gradle compile attempted, blocked because Gradle 7.4 could not download
+  (services.gradle.org DNS unavailable), and no Android SDK was installed.
+- New JUnit tests for cache and Android instrumentation navigation/scroll smoke are
+  included but were not executed in this environment.
+- No Android frame-times or 60/90/120 FPS claims have been measured or verified.
+
+Release checks to run before distributing APK:
+  ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:connectedDebugAndroidTest
+  adb shell dumpsys gfxinfo it.vfsfitvnm.vimusic reset
+  # Manually scroll Home/Moodspace, change tabs and skip tracks, then:
+  adb shell dumpsys gfxinfo it.vfsfitvnm.vimusic framestats
+
+Preservation:
+- Current WEST branding, Home design, Moodspace tab, Hybrid Smart Queue,
+  first-run personalization and all Search source kept intact.
+- Original README retained without edits; original Git history retained.
+- No APK bundled in resulting ZIP.

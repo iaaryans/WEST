@@ -1,4 +1,14 @@
 package it.vfsfitvnm.vimusic.ui.screens.home
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import it.vfsfitvnm.compose.routing.Route
+import it.vfsfitvnm.vimusic.ui.screens.search.searchTermForSubmission
+import it.vfsfitvnm.vimusic.enums.BuiltInPlaylist
+import it.vfsfitvnm.vimusic.ui.components.themed.BrowseShell
+import it.vfsfitvnm.vimusic.ui.components.themed.FilterPage
+
 
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -28,7 +38,7 @@ import it.vfsfitvnm.vimusic.listening.presentation.ListeningInsightsScreen
 import it.vfsfitvnm.vimusic.listening.presentation.listeningStatsRoute
 import it.vfsfitvnm.vimusic.ui.screens.localplaylist.LocalPlaylistScreen
 import it.vfsfitvnm.vimusic.ui.screens.playlistRoute
-import it.vfsfitvnm.vimusic.ui.screens.search.SearchScreen
+import it.vfsfitvnm.vimusic.ui.screens.search.SearchFlow
 import it.vfsfitvnm.vimusic.ui.screens.searchResultRoute
 import it.vfsfitvnm.vimusic.ui.screens.searchRoute
 import it.vfsfitvnm.vimusic.ui.screens.searchresult.SearchResultScreen
@@ -41,22 +51,16 @@ import it.vfsfitvnm.vimusic.utils.pauseSearchHistoryKey
 import it.vfsfitvnm.vimusic.utils.preferences
 import it.vfsfitvnm.vimusic.utils.rememberPreference
 
-/**
- * Index of the "Insights" entry in the left navigation rail.
- *
- * It deliberately sits outside the range of the switchable home tabs (0-4):
- * the sidebar item reuses the exact same rendering as the other navigation
- * items, but selecting it opens the existing [listeningStatsRoute] (the
- * original Insights screen) instead of switching the home tab content.
- */
-private const val INSIGHTS_TAB_INDEX = 5
-
 @ExperimentalFoundationApi
 @ExperimentalAnimationApi
 @Composable
 fun HomeScreen(onPlaylistUrl: (String) -> Unit) {
     val saveableStateHolder = rememberSaveableStateHolder()
 
+    // Regression fix: this used a plain rememberSaveable, so the selected tab
+    // reset to Listen Now after process death while homeScreenTabIndexKey (the
+    // dedicated persisted key) stayed unused.
+    val (index, select) = rememberPreference(homeScreenTabIndexKey, 0)
     PersistMapCleanup("home/")
 
     RouteHandler(
@@ -80,6 +84,17 @@ fun HomeScreen(onPlaylistUrl: (String) -> Unit) {
         settingsRoute {
             SettingsScreen()
         }
+
+        mixRoute { MixScreen(onBack = pop) }
+
+        moodspaceRoute { MoodspaceScreen(onBack = pop, onBrowseClick = { browseId ->
+            when (MoodspaceSafety.browseTarget(browseId)) {
+                MoodspaceSafety.BrowseTarget.ALBUM -> albumRoute(browseId)
+                MoodspaceSafety.BrowseTarget.ARTIST -> artistRoute(browseId)
+                MoodspaceSafety.BrowseTarget.PLAYLIST -> playlistRoute(browseId)
+                null -> Unit // Skip unsupported holiday/seasonal navigation endpoints.
+            }
+        }) }
 
         spotifyImportRoute {
             SpotifyImportScreen(
@@ -105,89 +120,45 @@ fun HomeScreen(onPlaylistUrl: (String) -> Unit) {
             )
         }
 
-        searchResultRoute { query ->
-            SearchResultScreen(
-                query = query,
-                onSearchAgain = {
-                    searchRoute(query)
-                }
-            )
-        }
-
-        searchRoute { initialTextInput ->
-            val context = LocalContext.current
-
-            SearchScreen(
-                initialTextInput = initialTextInput,
-                onSearch = { query ->
-                    pop()
-                    searchResultRoute(query)
-
-                    if (!context.preferences.getBoolean(pauseSearchHistoryKey, false)) {
-                        query {
-                            Database.insert(SearchQuery(query = query))
-                        }
-                    }
-                },
-                onViewPlaylist = onPlaylistUrl
-            )
+        searchRoute { input ->
+            SearchFlow(initialInput = input, onViewPlaylist = onPlaylistUrl)
         }
 
         host {
-            val (tabIndex, onTabChanged) = rememberPreference(
-                homeScreenTabIndexKey,
-                defaultValue = 0
-            )
-
-            Scaffold(
-                topIconButtonId = R.drawable.equalizer,
-                onTopIconButtonClick = { settingsRoute() },
-                tabIndex = tabIndex,
-                onTabChanged = { index ->
-                    if (index == INSIGHTS_TAB_INDEX) {
-                        listeningStatsRoute()
-                    } else {
-                        onTabChanged(index)
-                    }
-                },
-                tabColumnContent = { Item ->
-                    Item(0, "Quick picks", R.drawable.sparkles)
-                    Item(1, "Songs", R.drawable.musical_notes)
-                    Item(2, "Playlists", R.drawable.playlist)
-                    Item(3, "Artists", R.drawable.person)
-                    Item(4, "Albums", R.drawable.disc)
-                    Item(INSIGHTS_TAB_INDEX, "Insights", R.drawable.trending)
-                }
-            ) { currentTabIndex ->
-                saveableStateHolder.SaveableStateProvider(key = currentTabIndex) {
-                    when (currentTabIndex) {
-                        0 -> QuickPicks(
-                            onAlbumClick = { albumRoute(it) },
-                            onArtistClick = { artistRoute(it) },
-                            onPlaylistClick = { playlistRoute(it) },
-                            onSearchClick = { searchRoute("") }
-                        )
-
-                        1 -> HomeSongs(
-                            onSearchClick = { searchRoute("") }
-                        )
-
-                        2 -> HomePlaylists(
-                            onBuiltInPlaylist = { builtInPlaylistRoute(it) },
-                            onPlaylistClick = { localPlaylistRoute(it.id) },
-                            onImportFromSpotify = { spotifyImportRoute() },
-                            onSearchClick = { searchRoute("") }
-                        )
-
-                        3 -> HomeArtistList(
-                            onArtistClick = { artistRoute(it.id) },
-                            onSearchClick = { searchRoute("") }
-                        )
-
-                        4 -> HomeAlbums(
-                            onAlbumClick = { albumRoute(it.id) },
-                            onSearchClick = { searchRoute("") }
-                        )
+            BrowseShell(index, select) { tab ->
+                saveableStateHolder.SaveableStateProvider(tab) {
+                    when (tab) {
+                        0 -> QuickPicks(onMix = { mixRoute() }, onFind = { select(2) }, onImport = { spotifyImportRoute() },
+                            onAlbumClick = { albumRoute(it) }, onArtistClick = { artistRoute(it) },
+                            onPlaylistClick = { playlistRoute(it) }, onInsights = { listeningStatsRoute() },
+                            onSettings = { settingsRoute() }, onOffline = { builtInPlaylistRoute(BuiltInPlaylist.Offline) })
+                        1 -> MoodspaceScreen(onBrowseClick = { browseId ->
+                            when (MoodspaceSafety.browseTarget(browseId)) {
+                                MoodspaceSafety.BrowseTarget.ALBUM -> albumRoute(browseId)
+                                MoodspaceSafety.BrowseTarget.ARTIST -> artistRoute(browseId)
+                                MoodspaceSafety.BrowseTarget.PLAYLIST -> playlistRoute(browseId)
+                                null -> Unit
+                            }
+                        })
+                        2 -> SearchFlow(initialInput = "", onViewPlaylist = onPlaylistUrl)
+                        3 -> {
+                            val (filter, choose) = rememberSaveable { mutableStateOf(0) }
+                            val lists = rememberSaveableStateHolder()
+                            FilterPage(listOf("Playlists", "Songs", "Artists", "Albums"), filter, choose, header = {
+                                LibraryShortcuts({ builtInPlaylistRoute(BuiltInPlaylist.Favorites) },
+                                    { builtInPlaylistRoute(BuiltInPlaylist.Offline) })
+                            }) {
+                                lists.SaveableStateProvider(filter) {
+                                    when (filter) {
+                                        0 -> HomePlaylists(onPlaylistClick = { localPlaylistRoute(it.id) },
+                                            onImportFromSpotify = { spotifyImportRoute() })
+                                        1 -> HomeSongs()
+                                        2 -> HomeArtistList(onArtistClick = { artistRoute(it.id) })
+                                        3 -> HomeAlbums(onAlbumClick = { albumRoute(it.id) })
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

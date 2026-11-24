@@ -9,11 +9,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The ported BitChord matcher, on the same cases its own suite pins down.
+ * The Spotify import matcher, on the same cases its own suite pins down.
  *
  * The matcher is the one piece of the import whose failure is invisible: a
  * bad match neither crashes nor shows an error, it plays a different
- * recording under the right title. These tests are ported from BitChord's
+ * recording under the right title. These tests are adapted for the Spotify import's
  * SourcesTest so WEST's import keeps exactly the same matching rules.
  */
 class TrackMatcherTest {
@@ -96,7 +96,7 @@ class TrackMatcherTest {
     }
 
     /**
-     * The one that sent BitChord's matcher back for a rewrite. YouTube files
+     * The one that sent the track matcher back for a rewrite. YouTube files
      * the track under the film it is from and credits the lead singer; the
      * other catalogue holds the same audio under the bare title and credits
      * the duet. Every part of that disagreement is packaging.

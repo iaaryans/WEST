@@ -2,6 +2,8 @@
 
 package it.vfsfitvnm.vimusic
 
+import it.vfsfitvnm.vimusic.ui.components.themed.LocalReducedMotion
+
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -73,6 +75,8 @@ import it.vfsfitvnm.innertube.requests.song
 import it.vfsfitvnm.vimusic.enums.ColorPaletteMode
 import it.vfsfitvnm.vimusic.enums.ColorPaletteName
 import it.vfsfitvnm.vimusic.enums.ThumbnailRoundness
+import it.vfsfitvnm.vimusic.personalization.PersonalizationOnboardingScreen
+import it.vfsfitvnm.vimusic.personalization.TasteProfileStore
 import it.vfsfitvnm.vimusic.service.PlayerService
 import it.vfsfitvnm.vimusic.ui.components.BottomSheetMenu
 import it.vfsfitvnm.vimusic.ui.components.LocalMenuState
@@ -141,6 +145,29 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
         val launchedFromNotification = intent?.extras?.getBoolean("expandPlayerBottomSheet") == true
 
         setContent {
+            val lowRamDevice = remember {
+                (getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).isLowRamDevice
+            }
+            var reducedMotion by remember { mutableStateOf(preferences.getBoolean("reduceMotion", false)) }
+            DisposableEffect(Unit) {
+                val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+                    if (key == "reduceMotion") reducedMotion = prefs.getBoolean(key, false)
+                }
+                preferences.registerOnSharedPreferenceChangeListener(listener)
+                onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+            }
+            var showPersonalization by remember { mutableStateOf(
+                !TasteProfileStore.completed(preferences) || TasteProfileStore.editRequested(preferences)
+            ) }
+            DisposableEffect(Unit) {
+                val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+                    if (key == TasteProfileStore.EDIT_REQUESTED || key == TasteProfileStore.COMPLETED) {
+                        showPersonalization = !TasteProfileStore.completed(prefs) || TasteProfileStore.editRequested(prefs)
+                    }
+                }
+                preferences.registerOnSharedPreferenceChangeListener(listener)
+                onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+            }
             val coroutineScope = rememberCoroutineScope()
             val isSystemInDarkTheme = isSystemInDarkTheme()
 
@@ -149,7 +176,7 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                 stateSaver = Appearance.Companion
             ) {
                 with(preferences) {
-                    val colorPaletteName = getEnum(colorPaletteNameKey, ColorPaletteName.Dynamic)
+                    val colorPaletteName = getEnum(colorPaletteNameKey, ColorPaletteName.Default)
                     val colorPaletteMode = getEnum(colorPaletteModeKey, ColorPaletteMode.System)
                     val thumbnailRoundness =
                         getEnum(thumbnailRoundnessKey, ThumbnailRoundness.Light)
@@ -219,7 +246,7 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                                 val colorPaletteName =
                                     sharedPreferences.getEnum(
                                         colorPaletteNameKey,
-                                        ColorPaletteName.Dynamic
+                                        ColorPaletteName.Default
                                     )
 
                                 val colorPaletteMode =
@@ -272,7 +299,7 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                 with(preferences) {
                     registerOnSharedPreferenceChangeListener(listener)
 
-                    val colorPaletteName = getEnum(colorPaletteNameKey, ColorPaletteName.Dynamic)
+                    val colorPaletteName = getEnum(colorPaletteNameKey, ColorPaletteName.Default)
                     if (colorPaletteName == ColorPaletteName.Dynamic) {
                         setDynamicPalette(getEnum(colorPaletteModeKey, ColorPaletteMode.System))
                     }
@@ -306,9 +333,9 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                 defaultShimmerTheme.copy(
                     animationSpec = infiniteRepeatable(
                         animation = tween(
-                            durationMillis = 800,
+                            durationMillis = 1400,
                             easing = LinearEasing,
-                            delayMillis = 250,
+                            delayMillis = 0,
                         ),
                         repeatMode = RepeatMode.Restart
                     ),
@@ -346,6 +373,8 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                 }
 
                 CompositionLocalProvider(
+                    // On low-memory Android devices, prioritize stable frame pacing.
+                    LocalReducedMotion provides (reducedMotion || lowRamDevice),
                     LocalAppearance provides appearance,
                     LocalIndication provides rememberRipple(bounded = true),
                     LocalRippleTheme provides rippleTheme,
@@ -354,6 +383,9 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                     LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
                     LocalLayoutDirection provides LayoutDirection.Ltr
                 ) {
+                    if (showPersonalization) {
+                        PersonalizationOnboardingScreen(onFinished = { showPersonalization = false })
+                    } else {
                     // BUG-008: while the player sheet fully covers the screen,
                     // the Home content underneath must leave the accessibility
                     // tree so TalkBack cannot focus hidden controls; it is
@@ -387,6 +419,7 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                     )
+                    }
                 }
 
                 DisposableEffect(binder?.player) {

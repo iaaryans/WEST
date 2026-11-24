@@ -1,5 +1,11 @@
 package it.vfsfitvnm.vimusic.listening.presentation
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.window.Dialog
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -189,6 +195,9 @@ fun WestWrappedScreen() {
 private fun WrappedCard(summary: WrappedSummary) {
     val (colorPalette, typography) = LocalAppearance.current
 
+    var storyOpen by rememberSaveable(summary.year) { mutableStateOf(false) }
+    if (storyOpen) WrappedStory(summary) { storyOpen = false }
+
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier
@@ -222,6 +231,13 @@ private fun WrappedCard(summary: WrappedSummary) {
                 formatPlural(summary.uniqueSongs, "unique song") + " · " +
                 formatPlural(summary.uniqueArtists, "artist"),
             style = typography.xs.secondary.medium
+        )
+
+        BasicText(
+            "Play year in review",
+            Modifier.clip(CircleShape).background(colorPalette.accent)
+                .clickable { storyOpen = true }.padding(horizontal = 16.dp, vertical = 12.dp),
+            style = typography.xs.semiBold.copy(color = colorPalette.onAccent)
         )
 
         summary.mostActiveMonth?.let { month ->
@@ -338,5 +354,70 @@ private fun WrappedCard(summary: WrappedSummary) {
             style = typography.xxs.secondary.center,
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+@Composable
+private fun WrappedStory(summary: WrappedSummary, close: () -> Unit) {
+    val (palette, type) = LocalAppearance.current
+    val slides = remember(summary) {
+        buildList {
+            add("Listening time" to formatListeningDuration(summary.totalListeningMs))
+            add("Tracks played" to formatPlural(summary.totalPlays, "play"))
+            summary.topSongs.firstOrNull()?.let { add("Top song" to (it.title ?: it.songId)) }
+            summary.topArtists.firstOrNull()?.let { add("Top artist" to (it.name ?: it.artistId)) }
+            summary.topAlbums.firstOrNull()?.let { add("Top album" to (it.title ?: it.albumId)) }
+        }
+    }
+    var index by rememberSaveable(summary.year) { mutableStateOf(0) }
+    val page = index.coerceIn(slides.indices)
+    var paused by rememberSaveable { mutableStateOf(false) }
+    var elapsedMs by remember(page) { mutableStateOf(0f) }
+
+    LaunchedEffect(page, paused, slides.size) {
+        if (paused) return@LaunchedEffect
+        var previous = withFrameNanos { it }
+        while (elapsedMs < 14_000f) {
+            val now = withFrameNanos { it }
+            elapsedMs += ((now - previous) / 1_000_000f).coerceAtMost(100f)
+            previous = now
+        }
+        if (page == slides.lastIndex) close() else index = page + 1
+    }
+
+    Dialog(onDismissRequest = close) {
+        Column(Modifier.fillMaxWidth().aspectRatio(9f / 16f).clip(RoundedCornerShape(24.dp))
+            .background(Brush.verticalGradient(listOf(palette.background2, palette.background0)))
+            .padding(20.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                slides.indices.forEach { slot ->
+                    val fraction = when {
+                        slot < page -> 1f
+                        slot == page -> (elapsedMs / 14_000f).coerceIn(0f, 1f)
+                        else -> 0f
+                    }
+                    Box(Modifier.weight(1f).height(3.dp).background(palette.textDisabled)) {
+                        Spacer(Modifier.fillMaxWidth(fraction).height(3.dp).background(palette.accent))
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            BasicText("WEST Wrapped · ${summary.year}", style = type.xs.semiBold.secondary)
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                Crossfade(targetState = slides[page]) { slide ->
+                    Column {
+                        BasicText(slide.first, style = type.s.secondary)
+                        BasicText(slide.second, style = type.xxl.semiBold, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                BasicText("Back", Modifier.clickable(enabled = page > 0) { index = page - 1 }.padding(vertical = 12.dp), style = type.xs)
+                BasicText(if (paused) "Resume" else "Pause", Modifier.clickable { paused = !paused }.padding(12.dp), style = type.xs)
+                BasicText(if (page == slides.lastIndex) "Done" else "Next", Modifier.clickable {
+                    if (page == slides.lastIndex) close() else index = page + 1
+                }.padding(vertical = 12.dp), style = type.xs)
+            }
+        }
     }
 }

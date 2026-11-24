@@ -1,4 +1,16 @@
 package it.vfsfitvnm.vimusic.ui.screens.searchresult
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.text.BasicText
+import it.vfsfitvnm.vimusic.Database
+import it.vfsfitvnm.vimusic.ui.styling.LocalAppearance
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import it.vfsfitvnm.vimusic.ui.components.themed.FilterPage
+
 
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -52,7 +64,11 @@ import it.vfsfitvnm.vimusic.utils.searchResultScreenTabIndexKey
 fun SearchResultScreen(query: String, onSearchAgain: () -> Unit) {
     val context = LocalContext.current
     val saveableStateHolder = rememberSaveableStateHolder()
+    // Regression fix: the persisted searchResultScreenTabIndexKey existed but was
+    // unused; a rememberSaveable reset the results tab to Songs on process death.
     val (tabIndex, onTabIndexChanges) = rememberPreference(searchResultScreenTabIndexKey, 0)
+    var onlineSongResults by remember(query) { mutableStateOf(emptyList<Innertube.SongItem>()) }
+    var onlineVideoResults by remember(query) { mutableStateOf(emptyList<Innertube.VideoItem>()) }
 
     PersistMapCleanup(tagPrefix = "searchResults/$query/")
 
@@ -77,20 +93,8 @@ fun SearchResultScreen(query: String, onSearchAgain: () -> Unit) {
 
             val emptyItemsText = "No results found. Please try a different query or category"
 
-            Scaffold(
-                topIconButtonId = R.drawable.chevron_back,
-                onTopIconButtonClick = pop,
-                tabIndex = tabIndex,
-                onTabChanged = onTabIndexChanges,
-                tabColumnContent = { Item ->
-                    Item(0, "Songs", R.drawable.musical_notes)
-                    Item(1, "Albums", R.drawable.disc)
-                    Item(2, "Artists", R.drawable.person)
-                    Item(3, "Videos", R.drawable.film)
-                    Item(4, "Playlists", R.drawable.playlist)
-                    Item(5, "Featured", R.drawable.playlist)
-                }
-            ) { tabIndex ->
+            FilterPage(listOf("Songs", "Albums", "Artists", "Videos", "Playlists", "Featured"),
+                tabIndex, onTabIndexChanges, back = pop) {
                 saveableStateHolder.SaveableStateProvider(tabIndex) {
                     when (tabIndex) {
                         0 -> {
@@ -99,8 +103,11 @@ fun SearchResultScreen(query: String, onSearchAgain: () -> Unit) {
                             val thumbnailSizeDp = Dimensions.thumbnails.song
                             val thumbnailSizePx = thumbnailSizeDp.px
 
+                            val saved by remember(query) { Database.searchPreview("%$query%") }.collectAsState(emptyList())
                             ItemsPage(
                                 tag = "searchResults/$query/songs",
+                                excludedKeys = saved.map { it.song.id }.toSet(),
+                                onItemsChanged = { onlineSongResults = it },
                                 itemsPageProvider = { continuation ->
                                     if (continuation == null) {
                                         Innertube.searchPage(
@@ -115,7 +122,22 @@ fun SearchResultScreen(query: String, onSearchAgain: () -> Unit) {
                                     }
                                 },
                                 emptyItemsText = emptyItemsText,
-                                headerContent = headerContent,
+                                headerContent = { button ->
+                                    Column {
+                                        headerContent(button)
+                                        saved.forEach { row ->
+                                            SongItem(row.song, thumbnailSizePx, thumbnailSizeDp, Modifier.clickable {
+                                                binder?.playSmartQueue(
+                                                    row.song.asMediaItem,
+                                                    saved.map { it.song.asMediaItem } + onlineSongResults.map { it.asMediaItem }
+                                                )
+                                            }, trailingContent = {
+                                                val offline = row.contentLength?.let { it > 0 && binder?.cache?.isCached(row.song.id, 0, it) == true } == true
+                                                BasicText(if (offline) "Offline" else "Saved", style = LocalAppearance.current.typography.xxs)
+                                            })
+                                        }
+                                    }
+                                },
                                 itemContent = { song ->
                                     SongItem(
                                         song = song,
@@ -132,9 +154,10 @@ fun SearchResultScreen(query: String, onSearchAgain: () -> Unit) {
                                                     }
                                                 },
                                                 onClick = {
-                                                    binder?.stopRadio()
-                                                    binder?.player?.forcePlay(song.asMediaItem)
-                                                    binder?.setupRadio(song.info?.endpoint)
+                                                    binder?.playSmartQueue(
+                                                        song.asMediaItem,
+                                                        saved.map { it.song.asMediaItem } + onlineSongResults.map { it.asMediaItem }
+                                                    )
                                                 }
                                             )
                                     )
@@ -226,6 +249,7 @@ fun SearchResultScreen(query: String, onSearchAgain: () -> Unit) {
 
                             ItemsPage(
                                 tag = "searchResults/$query/videos",
+                                onItemsChanged = { onlineVideoResults = it },
                                 itemsPageProvider = { continuation ->
                                     if (continuation == null) {
                                         Innertube.searchPage(
@@ -257,9 +281,10 @@ fun SearchResultScreen(query: String, onSearchAgain: () -> Unit) {
                                                     }
                                                 },
                                                 onClick = {
-                                                    binder?.stopRadio()
-                                                    binder?.player?.forcePlay(video.asMediaItem)
-                                                    binder?.setupRadio(video.info?.endpoint)
+                                                    binder?.playSmartQueue(
+                                                        video.asMediaItem,
+                                                        onlineVideoResults.map { it.asMediaItem }
+                                                    )
                                                 }
                                             )
                                     )
