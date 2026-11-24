@@ -1,5 +1,5 @@
 WEST — Smooth UI / Animation Optimization
-Source basis: WEST-BitChord-Style-Home-Moodspace-Explore-Full-Source-No-APK-With-Git.zip
+Source basis: earlier WEST Home and Moodspace development snapshot
 
 Changes (no user-facing features removed):
 - BrowseChrome.kt: switch to a single incoming content tree on tab changes. Previously
