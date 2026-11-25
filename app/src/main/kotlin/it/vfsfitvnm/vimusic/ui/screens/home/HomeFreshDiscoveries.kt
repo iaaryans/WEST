@@ -68,7 +68,7 @@ internal fun HomeFreshDiscoveries(feed: FreshDiscoveryFeed, width: Dp) {
     val songs = feed.songs
     val loading = feed.loading
     val pages = remember(songs) { HomeShelfPolicy.pages(songs) }
-    val queue = remember(songs) { songs.map { it.asMediaItem } }
+    val queue = remember<List<androidx.media3.common.MediaItem>>(songs) { songs.map { it.asMediaItem } }
     if (songs.isEmpty() && !loading) return
     HomeShelfTitle("Discover more", "A little beyond your usual listening")
     if (songs.isNotEmpty()) {
