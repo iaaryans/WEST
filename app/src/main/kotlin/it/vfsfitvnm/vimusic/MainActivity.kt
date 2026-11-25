@@ -362,7 +362,7 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                     expandedBound = maxHeight,
                 )
 
-                val playerAwareWindowInsets by remember(bottomDp, playerBottomSheetState.value) {
+                val playerAwareWindowInsets by remember(bottomDp, playerBottomSheetState, windowsInsets) {
                     derivedStateOf {
                         val bottom = playerBottomSheetState.value.coerceIn(bottomDp, playerBottomSheetState.collapsedBound)
 

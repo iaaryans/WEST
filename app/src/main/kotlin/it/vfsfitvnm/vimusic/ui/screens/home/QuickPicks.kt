@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
+import it.vfsfitvnm.vimusic.utils.preferences
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -53,6 +55,9 @@ import it.vfsfitvnm.vimusic.utils.semiBold
 import it.vfsfitvnm.vimusic.utils.shouldBePlaying
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * WEST's Listen Now home, adapted to the BitChord Home layout from the supplied source:
@@ -80,21 +85,36 @@ fun QuickPicks(
 
     var trending by persist<Song?>("home/trending")
     var relatedPageResult by persist<Result<Innertube.RelatedPage?>?>("home/relatedPageResult")
-    val recent by remember { Database.recentlyPlayed() }.collectAsState(initial = emptyList())
+    val listState = rememberLazyListState()
+    val store = remember(listState) { HomeFeedStore(snapshotFlow { listState.isScrollInProgress }) }
+    val discoveryPrefs = rememberHomeDiscoveryPreferences(LocalContext.current.preferences)
+    val tasteFeed = rememberTasteDiscoveryFeed(store, discoveryPrefs.enabled)
+    val intelligenceFeed = rememberIntelligenceFeed(store)
+    val freshFeed = rememberFreshDiscoveryFeed(store, discoveryPrefs)
+    var recent by persist("home/fluid/recents", emptyList<Song>())
+    LaunchedEffect(store) {
+        Database.recentlyPlayed().distinctUntilChanged().collectLatest { songs ->
+            store.awaitIdle()
+            recent = songs
+        }
+    }
     val hasLibrary by remember { Database.hasLibraryContent() }.collectAsState(initial = null)
     var retry by remember { mutableStateOf(0) }
 
-    LaunchedEffect(retry) {
+    LaunchedEffect(retry, store) {
         var forceRefresh = retry > 0
         Database.trending().distinctUntilChangedBy { it?.id }.collectLatest { song ->
             val seed = song?.id ?: "J7p4bzqLvCw"
             val changed = trending?.id != song?.id
+            store.awaitIdle()
             trending = song
             val warm = HomeRelatedFeedCache.peek(seed)
             if (warm != null && !forceRefresh) relatedPageResult = warm
             // Keep the last displayed feed while its new recommendations load.
             if (changed || warm == null || forceRefresh || relatedPageResult == null) {
-                relatedPageResult = HomeRelatedFeedCache.load(seed, force = forceRefresh)
+                val next = withContext(Dispatchers.Default) { HomeRelatedFeedCache.load(seed, force = forceRefresh) }
+                store.awaitIdle()
+                relatedPageResult = next
             }
             forceRefresh = false
         }
@@ -143,218 +163,223 @@ fun QuickPicks(
         binder?.playSmartQueue(song.asMediaItem, relatedSongs.map { it.asMediaItem })
     }
 
-    val listState = rememberLazyListState()
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxSize().background(palette.background0),
-        contentPadding = PaddingValues(
-            top = insets.calculateTopPadding(),
-            bottom = insets.calculateBottomPadding() + 20.dp
-        )
-    ) {
-        item(key = "west-wordmark") {
-            Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp)) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween) {
-                    // Compact, tightly cropped theme-aware wordmark. Both variants
-                    // retain WEST's red wave, with no extra tagline on Home.
-                    Column(modifier = Modifier.weight(1f)) {
-                        Image(
-                            painter = painterResource(
-                                if (palette.isDark) R.drawable.west_logo_wordmark_dark
-                                else R.drawable.west_logo_wordmark_light
-                            ),
-                            contentDescription = "WEST logo",
-                            modifier = Modifier.widthIn(max = 152.dp)
-                                .fillMaxWidth()
-                                .height(40.dp),
-                            alignment = Alignment.CenterStart,
-                            contentScale = ContentScale.Fit
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        BasicText("Listen now", style = typography.xs.secondary)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ActionLabel("Insights", onInsights)
-                        HeaderIconButton(onClick = onSettings, icon = R.drawable.gear,
-                            color = palette.text, description = "Settings")
-                    }
-                }
-            }
-        }
-
-        // The lead shelf uses 3:4 portrait cards with artwork and overlaid labels.
-        // Its recommendations come from WEST playback, rather than fake hardcoded songs.
-        item(key = "top-picks") {
-            HomeShelfTitle(HomeShelfPolicy.TOP_PICKS, "A starting point made for your listening")
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val cardWidth = minOf(maxWidth * 0.60f, 280.dp)
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    item(key = "station") {
-                        PortraitPickCard(
-                            eyebrow = "MADE FOR YOU",
-                            title = "Your Station",
-                            subtitle = "Your favorites and similar music",
-                            artworkUrl = recents.firstOrNull()?.thumbnailUrl ?: trending?.thumbnailUrl,
-                            color = Color(0xFF56345D), width = cardWidth,
-                            onClick = {
-                                val seed = recents.firstOrNull() ?: trending
-                                if (seed != null) playLocal(seed, recents.ifEmpty { listOf(seed) })
-                                else onFind()
-                            }
-                        )
-                    }
-                    item(key = "discovery") {
-                        PortraitPickCard(
-                            eyebrow = "WEST INTELLIGENCE",
-                            title = "Discovery Station",
-                            subtitle = "Find your next favorite song",
-                            artworkUrl = relatedSongs.firstOrNull()?.thumbnail?.url,
-                            color = Color(0xFF244665), width = cardWidth,
-                            onClick = {
-                                relatedSongs.firstOrNull()?.let(::playOnline) ?: onFind()
-                            }
-                        )
-                    }
-                    relatedAlbums.take(3).forEach { album ->
-                        item(key = "album/${album.key}") {
-                            PortraitPickCard(
-                                eyebrow = "RECOMMENDED ALBUM",
-                                title = album.info?.name.orEmpty(),
-                                subtitle = album.authors?.joinToString(", ") { it.name.orEmpty() }.orEmpty(),
-                                artworkUrl = album.thumbnail?.url,
-                                color = Color(0xFF45573A), width = cardWidth,
-                                onClick = { onAlbumClick(album.key) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val pageWidth = minOf(maxWidth * 0.88f, 440.dp)
+        val cardWidth = minOf(maxWidth * 0.60f, 280.dp)
+        CompositionLocalProvider(LocalHomeFeedStore provides store,
+            LocalHomeSinglePageFits provides (pageWidth + 32.dp <= maxWidth)) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize().background(palette.background0),
+            contentPadding = PaddingValues(
+                top = insets.calculateTopPadding(),
+                bottom = insets.calculateBottomPadding() + 20.dp
+            )
+        ) {
+            item(key = "west-wordmark", contentType = "header") {
+                Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween) {
+                        // Compact, tightly cropped theme-aware wordmark. Both variants
+                        // retain WEST's red wave, with no extra tagline on Home.
+                        Column(modifier = Modifier.weight(1f)) {
+                            Image(
+                                painter = painterResource(
+                                    if (palette.isDark) R.drawable.west_logo_wordmark_dark
+                                    else R.drawable.west_logo_wordmark_light
+                                ),
+                                contentDescription = "WEST logo",
+                                modifier = Modifier.widthIn(max = 152.dp)
+                                    .fillMaxWidth()
+                                    .height(40.dp),
+                                alignment = Alignment.CenterStart,
+                                contentScale = ContentScale.Fit
                             )
+                            Spacer(Modifier.height(2.dp))
+                            BasicText("Listen now", style = typography.xs.secondary)
                         }
-                    }
-                    relatedPlaylists.take(2).forEach { playlist ->
-                        item(key = "playlist/${playlist.key}") {
-                            PortraitPickCard(
-                                eyebrow = "PICKED FOR YOU",
-                                title = playlist.info?.name.orEmpty(),
-                                subtitle = playlist.channel?.name.orEmpty(),
-                                artworkUrl = playlist.thumbnail?.url,
-                                color = Color(0xFF634335), width = cardWidth,
-                                onClick = { onPlaylistClick(playlist.key) }
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ActionLabel("Insights", onInsights)
+                            HeaderIconButton(onClick = onSettings, icon = R.drawable.gear,
+                                color = palette.text, description = "Settings")
                         }
                     }
                 }
             }
-        }
 
-        if (recents.isNotEmpty()) {
-            item(key = "recents") { HomeRecentShelf(recents, recentPages) }
-        }
-        // Subscribes to player events only when its own LazyColumn item is visible.
-        // A song/position change no longer recomposes every top-pick and discovery shelf.
-        item(key = "continue-listening") { HomeNowPlayingShelf() }
-
-        item(key = "taste-discovery") { TasteDiscoverySection() }
-        item(key = "local-intelligence") { IntelligenceSection() }
-        item(key = "fresh-discoveries") { HomeFreshDiscoveries() }
-
-        item(key = "quick-picks") {
-            HomeShelfTitle(HomeShelfPolicy.QUICK_PICKS, "Music related to what you listen to")
-            if (relatedSongs.isNotEmpty() || trending != null) {
-                BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val pageWidth = minOf(maxWidth * 0.88f, 440.dp)
-                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(quickPages, key = { it.first().id }) { page ->
-                            Column(Modifier.width(pageWidth)) {
-                                page.forEach { row ->
-                                    when (row) {
-                                        is HomePickRow.Local -> HomeSongRow(row.song, songArt,
-                                            modifier = Modifier.combinedClickable(
-                                                onClick = { binder?.playSmartQueue(row.song.asMediaItem, quickMedia) },
-                                                onLongClick = {
-                                                    menuState.display {
-                                                        NonQueuedMediaItemMenu(onDismiss = menuState::hide,
-                                                            mediaItem = row.song.asMediaItem)
-                                                    }
-                                                }
-                                            ))
-                                        is HomePickRow.Online -> HomeSongRow(row.song, songArt,
-                                            modifier = Modifier.combinedClickable(
-                                                onClick = { binder?.playSmartQueue(row.song.asMediaItem, quickMedia) },
-                                                onLongClick = {
-                                                    menuState.display {
-                                                        NonQueuedMediaItemMenu(onDismiss = menuState::hide,
-                                                            mediaItem = row.song.asMediaItem)
-                                                    }
-                                                }
-                                            ))
-                                    }
+            // The lead shelf uses 3:4 portrait cards with artwork and overlaid labels.
+            // Its recommendations come from WEST playback, rather than fake hardcoded songs.
+            item(key = "top-picks-title", contentType = "shelf-title") {
+                HomeShelfTitle(HomeShelfPolicy.TOP_PICKS, "A starting point made for your listening")
+            }
+            item(key = "top-picks", contentType = "portrait-shelf") {
+                Column(Modifier.fillMaxWidth()) {
+                    HomeHorizontalRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        item(key = "station", contentType = "portrait-card") {
+                            PortraitPickCard(
+                                eyebrow = "MADE FOR YOU",
+                                title = "Your Station",
+                                subtitle = "Your favorites and similar music",
+                                artworkUrl = recents.firstOrNull()?.thumbnailUrl ?: trending?.thumbnailUrl,
+                                color = Color(0xFF56345D), width = cardWidth,
+                                onClick = {
+                                    val seed = recents.firstOrNull() ?: trending
+                                    if (seed != null) playLocal(seed, recents.ifEmpty { listOf(seed) })
+                                    else onFind()
                                 }
+                            )
+                        }
+                        item(key = "discovery", contentType = "portrait-card") {
+                            PortraitPickCard(
+                                eyebrow = "WEST INTELLIGENCE",
+                                title = "Discovery Station",
+                                subtitle = "Find your next favorite song",
+                                artworkUrl = relatedSongs.firstOrNull()?.thumbnail?.url,
+                                color = Color(0xFF244665), width = cardWidth,
+                                onClick = {
+                                    relatedSongs.firstOrNull()?.let(::playOnline) ?: onFind()
+                                }
+                            )
+                        }
+                        relatedAlbums.take(3).forEach { album ->
+                            item(key = "album/${album.key}", contentType = "portrait-card") {
+                                PortraitPickCard(
+                                    eyebrow = "RECOMMENDED ALBUM",
+                                    title = album.info?.name.orEmpty(),
+                                    subtitle = album.authors?.joinToString(", ") { it.name.orEmpty() }.orEmpty(),
+                                    artworkUrl = album.thumbnail?.url,
+                                    color = Color(0xFF45573A), width = cardWidth,
+                                    onClick = { onAlbumClick(album.key) }
+                                )
+                            }
+                        }
+                        relatedPlaylists.take(2).forEach { playlist ->
+                            item(key = "playlist/${playlist.key}", contentType = "portrait-card") {
+                                PortraitPickCard(
+                                    eyebrow = "PICKED FOR YOU",
+                                    title = playlist.info?.name.orEmpty(),
+                                    subtitle = playlist.channel?.name.orEmpty(),
+                                    artworkUrl = playlist.thumbnail?.url,
+                                    color = Color(0xFF634335), width = cardWidth,
+                                    onClick = { onPlaylistClick(playlist.key) }
+                                )
                             }
                         }
                     }
                 }
-            } else if (relatedPageResult == null) {
-                // Static placeholders do not run a full-screen shimmer animation
-                // while the nested Home feed is scrolling.
-                Column {
-                    repeat(4) { SongItemPlaceholder(thumbnailSizeDp = songArt) }
-                }
-            } else {
-                BasicText("Recommendations are unavailable right now.",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    style = typography.xs.secondary)
-                Row { ActionLabel("Retry") { relatedPageResult = null; retry++ }; ActionLabel("Offline music", onOffline) }
             }
-        }
 
-        relatedAlbums.takeIf { it.isNotEmpty() }?.let { albums ->
-            item(key = "albums") {
-                HomeShelfTitle("Related albums")
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp)) {
-                    items(albums, key = { it.key }) { album ->
-                        AlbumItem(album, coverPx, coverDp, alternative = true,
-                            modifier = Modifier.clickable { onAlbumClick(album.key) })
-                    }
+            if (recents.isNotEmpty()) {
+                item(key = "recents-title", contentType = "shelf-title") {
+                    HomeShelfTitle(HomeShelfPolicy.RECENTS, "Pick up where you left off")
                 }
+                item(key = "recents", contentType = "song-shelf") { HomeRecentShelf(recents, recentPages, pageWidth) }
             }
-        }
-        relatedArtists.takeIf { it.isNotEmpty() }?.let { artists ->
-            item(key = "artists") {
-                HomeShelfTitle("Similar artists")
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp)) {
-                    items(artists, key = { it.key }) { artist ->
-                        ArtistItem(artist, artistPx, artistDp, alternative = true,
-                            modifier = Modifier.clickable { onArtistClick(artist.key) })
-                    }
-                }
-            }
-        }
-        relatedPlaylists.takeIf { it.isNotEmpty() }?.let { playlists ->
-            item(key = "playlists") {
-                HomeShelfTitle("Playlists you might like")
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp)) {
-                    items(playlists, key = { it.key }) { playlist ->
-                        PlaylistItem(playlist, coverPx, coverDp, alternative = true,
-                            modifier = Modifier.clickable { onPlaylistClick(playlist.key) })
-                    }
-                }
-            }
-        }
+            // Subscribes to player events only when its own LazyColumn item is visible.
+            // A song/position change no longer recomposes every top-pick and discovery shelf.
+            item(key = "continue-listening", contentType = "playing-shelf") { HomeNowPlayingShelf() }
 
-        item(key = "shortcuts") {
-            HomeShelfTitle("Your shortcuts")
-            LazyRow(contentPadding = PaddingValues(horizontal = 8.dp)) {
-                item { ActionLabel("Find music", onFind) }
-                if (hasLibrary != false) item { ActionLabel("Build a timed mix", onMix) }
-                item { ActionLabel("Import from Spotify", onImport) }
-                item { ActionLabel("Offline music", onOffline) }
+            item(key = "taste-discovery", contentType = "song-shelf") { TasteDiscoverySection(tasteFeed.value, pageWidth) }
+            item(key = "local-intelligence", contentType = "intelligence-shelf") {
+                IntelligenceSection(intelligenceFeed.value, pageWidth, rediscover = false)
             }
+            item(key = "forgotten-gems", contentType = "intelligence-shelf") {
+                IntelligenceSection(intelligenceFeed.value, pageWidth, rediscover = true)
+            }
+            item(key = "fresh-discoveries", contentType = "song-shelf") { HomeFreshDiscoveries(freshFeed.value, pageWidth) }
+
+            item(key = "quick-picks-title", contentType = "shelf-title") {
+                HomeShelfTitle(HomeShelfPolicy.QUICK_PICKS, "Music related to what you listen to")
+            }
+            item(key = "quick-picks", contentType = "song-shelf") {
+                if (relatedSongs.isNotEmpty() || trending != null) {
+                    HomeSongPages(quickPages, pageWidth, { it.id }) { row ->
+                        when (row) {
+                            is HomePickRow.Local -> HomeSongRow(row.song, songArt,
+                                modifier = Modifier.combinedClickable(
+                                    onClick = { binder?.playSmartQueue(row.song.asMediaItem, quickMedia) },
+                                    onLongClick = {
+                                        menuState.display {
+                                            NonQueuedMediaItemMenu(onDismiss = menuState::hide,
+                                                mediaItem = row.song.asMediaItem)
+                                        }
+                                    }))
+                            is HomePickRow.Online -> HomeSongRow(row.song, songArt,
+                                modifier = Modifier.combinedClickable(
+                                    onClick = { binder?.playSmartQueue(row.song.asMediaItem, quickMedia) },
+                                    onLongClick = {
+                                        menuState.display {
+                                            NonQueuedMediaItemMenu(onDismiss = menuState::hide,
+                                                mediaItem = row.song.asMediaItem)
+                                        }
+                                    }))
+                        }
+                    }
+                } else if (relatedPageResult == null) {
+                    // Static placeholders do not run a full-screen shimmer animation
+                    // while the nested Home feed is scrolling.
+                    Column {
+                        repeat(4) { SongItemPlaceholder(thumbnailSizeDp = songArt) }
+                    }
+                } else {
+                    BasicText("Recommendations are unavailable right now.",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = typography.xs.secondary)
+                    Row { ActionLabel("Retry") { relatedPageResult = null; retry++ }; ActionLabel("Offline music", onOffline) }
+                }
+            }
+
+            relatedAlbums.takeIf { it.isNotEmpty() }?.let { albums ->
+                item(key = "albums-title", contentType = "shelf-title") { HomeShelfTitle("Related albums") }
+                item(key = "albums", contentType = "album-shelf") {
+                    HomeHorizontalRow(horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp)) {
+                        items(albums, key = { it.key }, contentType = { "albums-card" }) { album ->
+                            AlbumItem(album, coverPx, coverDp, alternative = true, boundedArtwork = true,
+                                modifier = Modifier.clickable { onAlbumClick(album.key) })
+                        }
+                    }
+                }
+            }
+            relatedArtists.takeIf { it.isNotEmpty() }?.let { artists ->
+                item(key = "artists-title", contentType = "shelf-title") { HomeShelfTitle("Similar artists") }
+                item(key = "artists", contentType = "artist-shelf") {
+                    HomeHorizontalRow(horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp)) {
+                        items(artists, key = { it.key }, contentType = { "artists-card" }) { artist ->
+                            ArtistItem(artist, artistPx, artistDp, alternative = true, boundedArtwork = true,
+                                modifier = Modifier.clickable { onArtistClick(artist.key) })
+                        }
+                    }
+                }
+            }
+            relatedPlaylists.takeIf { it.isNotEmpty() }?.let { playlists ->
+                item(key = "playlists-title", contentType = "shelf-title") { HomeShelfTitle("Playlists you might like") }
+                item(key = "playlists", contentType = "playlist-shelf") {
+                    HomeHorizontalRow(horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp)) {
+                        items(playlists, key = { it.key }, contentType = { "playlists-card" }) { playlist ->
+                            PlaylistItem(playlist, coverPx, coverDp, alternative = true, boundedArtwork = true,
+                                modifier = Modifier.clickable { onPlaylistClick(playlist.key) })
+                        }
+                    }
+                }
+            }
+
+            item(key = "shortcuts-title", contentType = "shelf-title") { HomeShelfTitle("Your shortcuts") }
+                item(key = "shortcuts", contentType = "shortcuts") {
+                HomeHorizontalRow(contentPadding = PaddingValues(horizontal = 8.dp)) {
+                    item { ActionLabel("Find music", onFind) }
+                    if (hasLibrary != false) item { ActionLabel("Build a timed mix", onMix) }
+                    item { ActionLabel("Import from Spotify", onImport) }
+                    item { ActionLabel("Offline music", onOffline) }
+                }
+            }
+        }
         }
     }
 }
@@ -419,7 +444,7 @@ private fun PortraitPickCard(
 
 /** Isolated player-event consumer: does not invalidate the entire Home LazyColumn. */
 @Composable
-private fun HomeRecentShelf(recents: List<Song>, pages: List<List<Song>>) {
+private fun HomeRecentShelf(recents: List<Song>, pages: List<List<Song>>, width: Dp) {
     val (_, typography) = LocalAppearance.current
     val player = LocalPlayerServiceBinder.current?.player
     val binder = LocalPlayerServiceBinder.current
@@ -438,25 +463,12 @@ private fun HomeRecentShelf(recents: List<Song>, pages: List<List<Song>>) {
     }
     val art = Dimensions.thumbnails.song
     val queue = remember(recents) { recents.map(Song::asMediaItem) }
-    HomeShelfTitle(HomeShelfPolicy.RECENTS, "Pick up where you left off")
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val width = minOf(maxWidth * 0.88f, 440.dp)
-        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(pages, key = { it.first().id }) { page ->
-                Column(Modifier.width(width)) {
-                    page.forEach { song ->
-                        HomeSongRow(song = song, thumbnailSize = art,
-                            modifier = Modifier.clickable {
-                                binder?.playSmartQueue(song.asMediaItem, queue)
-                            },
-                            trailingContent = if (playingId == song.id && playing) ({
-                                BasicText("Playing", style = typography.xxs.secondary)
-                            }) else null)
-                    }
-                }
-            }
-        }
+    HomeSongPages(pages, width, { it.id }) { song ->
+        HomeSongRow(song = song, thumbnailSize = art,
+            modifier = Modifier.clickable { binder?.playSmartQueue(song.asMediaItem, queue) },
+            trailingContent = if (playingId == song.id && playing) ({
+                BasicText("Playing", style = typography.xxs.secondary)
+            }) else null)
     }
 }
 

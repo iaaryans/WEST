@@ -6,12 +6,15 @@ import it.vfsfitvnm.vimusic.listening.data.listeningHistory
 import it.vfsfitvnm.vimusic.models.Song
 import it.vfsfitvnm.vimusic.personalization.TasteProfileStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 internal data class RecommendedSong(val song: Song, val reason: String)
 internal data class IntelligenceSnapshot(
@@ -31,12 +34,18 @@ internal object RecommendationRepository {
         awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }.conflate()
 
-    fun observe(prefs: SharedPreferences): Flow<IntelligenceSnapshot> = combine(
-        Database.intelligenceLibrary(),
-        Database.listeningHistory.recentForIntelligence(1200),
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observe(prefs: SharedPreferences, beforeRanking: suspend () -> Unit = {}): Flow<IntelligenceSnapshot> = combine(
+        Database.intelligenceLibrary().distinctUntilChanged(),
+        Database.listeningHistory.recentForIntelligence(1200).distinctUntilChanged(),
         preferenceChanges(prefs)
-    ) { songs, sessions, _ ->
-        if (!IntelligencePreferences.enabled(prefs)) return@combine IntelligenceSnapshot(enabled = false)
+    ) { songs, sessions, _ -> songs to sessions }
+        .conflate()
+        .mapLatest { (songs, sessions) ->
+        // Home can suspend non-urgent ranking while the user is interacting.
+        // Moodspace uses the default no-op hook, preserving its behavior.
+        beforeRanking()
+        if (!IntelligencePreferences.enabled(prefs)) return@mapLatest IntelligenceSnapshot(enabled = false)
         val valid = songs
         val taste = TasteProfileStore.load(prefs)
         val output = RecommendationEngine.recommend(
@@ -58,5 +67,5 @@ internal object RecommendationRepository {
             songsById[entry.id]?.let { RecommendedSong(it, entry.explanation) }
         }
         IntelligenceSnapshot(madeForYou = map(output.madeForYou), rediscover = map(output.rediscover))
-    }.flowOn(Dispatchers.Default)
+    }.flowOn(Dispatchers.Default).conflate().distinctUntilChanged()
 }
