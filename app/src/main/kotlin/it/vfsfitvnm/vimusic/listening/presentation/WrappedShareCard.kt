@@ -131,25 +131,25 @@ object WrappedShareCard {
             }
         }
 
-        // Header badge: "WEST" pill in the accent colour
-        val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = colors.onAccent
-            textSize = px(24)
-            typeface = bold
-        }
-        val badgeHeight = px(30)
-        canvas.drawRoundRect(
-            RectF(padding, y, padding + measure(badgePaint, "WEST") + px(32), y + badgeHeight),
-            badgeHeight / 2, badgeHeight / 2,
-            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colors.accent }
+        // The exported card uses a dark gradient in both app themes.
+        // Reuse the official dark-background wordmark from the Home screen.
+        val logoHeight = px(30)
+        val logo = requireNotNull(ResourcesCompat.getDrawable(
+            context.resources, R.drawable.west_logo_wordmark_dark, context.theme
+        ))
+        val sourceWidth = logo.intrinsicWidth.coerceAtLeast(1)
+        val sourceHeight = logo.intrinsicHeight.coerceAtLeast(1)
+        val scale = minOf(px(152) / sourceWidth, logoHeight / sourceHeight)
+        val width = (sourceWidth * scale).toInt().coerceAtLeast(1)
+        val height = (sourceHeight * scale).toInt().coerceAtLeast(1)
+        val top = y + (logoHeight - height) / 2f
+        canvas.drawBitmap(
+            logo.toBitmap(width = width, height = height),
+            null,
+            RectF(padding, top, padding + width, top + height),
+            Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         )
-        canvas.drawText(
-            "WEST",
-            padding + px(16),
-            y + badgeHeight / 2 - (badgePaint.ascent() + badgePaint.descent()) / 2,
-            badgePaint
-        )
-        y += badgeHeight + px(28)
+        y += logoHeight + px(28)
 
         // Title + headline numbers
         val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -329,7 +329,7 @@ object WrappedShareCard {
                 strokeWidth = 2f
             }
         )
-        val footerText = "WEST · Listening Insights"
+        val footerText = "Listening Insights"
         canvas.drawText(
             footerText,
             (WIDTH - measure(footerPaint, footerText)) / 2,
