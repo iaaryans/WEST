@@ -14,5 +14,7 @@ internal object HomeShelfPolicy {
         return items.filter { item -> id(item).isNotBlank() && seen.add(id(item)) }
     }
 
+    fun useStaticPage(pageCount: Int, fits: Boolean): Boolean = pageCount == 1 && fits
+
     fun <T> pages(items: List<T>): List<List<T>> = items.chunked(ITEMS_PER_PAGE)
 }

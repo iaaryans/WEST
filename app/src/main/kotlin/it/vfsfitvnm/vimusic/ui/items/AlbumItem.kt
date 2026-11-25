@@ -13,6 +13,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import it.vfsfitvnm.vimusic.ui.performance.SmoothArtwork
 import it.vfsfitvnm.vimusic.models.Album
 import it.vfsfitvnm.vimusic.ui.components.themed.TextPlaceholder
 import it.vfsfitvnm.vimusic.ui.styling.LocalAppearance
@@ -48,7 +49,8 @@ fun AlbumItem(
     thumbnailSizePx: Int,
     thumbnailSizeDp: Dp,
     modifier: Modifier = Modifier,
-    alternative: Boolean = false
+    alternative: Boolean = false,
+    boundedArtwork: Boolean = false
 ) {
     AlbumItem(
         thumbnailUrl = album.thumbnail?.url,
@@ -58,6 +60,7 @@ fun AlbumItem(
         thumbnailSizePx = thumbnailSizePx,
         thumbnailSizeDp = thumbnailSizeDp,
         alternative = alternative,
+        boundedArtwork = boundedArtwork,
         modifier = modifier
     )
 }
@@ -71,7 +74,8 @@ fun AlbumItem(
     thumbnailSizePx: Int,
     thumbnailSizeDp: Dp,
     modifier: Modifier = Modifier,
-    alternative: Boolean = false
+    alternative: Boolean = false,
+    boundedArtwork: Boolean = false
 ) {
     val (_, typography, thumbnailShape) = LocalAppearance.current
 
@@ -80,14 +84,14 @@ fun AlbumItem(
         thumbnailSizeDp = thumbnailSizeDp,
         modifier = modifier
     ) {
-        AsyncImage(
-            model = thumbnailUrl?.thumbnail(thumbnailSizePx),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .clip(thumbnailShape)
-                .size(thumbnailSizeDp)
-        )
+        val artworkModifier = Modifier.clip(thumbnailShape).size(thumbnailSizeDp)
+        if (boundedArtwork) {
+            SmoothArtwork(thumbnailUrl, thumbnailSizePx, artworkModifier)
+        } else {
+            AsyncImage(model = thumbnailUrl?.thumbnail(thumbnailSizePx),
+                contentDescription = null, contentScale = ContentScale.Crop,
+                modifier = artworkModifier)
+        }
 
         ItemInfoContainer {
             BasicText(

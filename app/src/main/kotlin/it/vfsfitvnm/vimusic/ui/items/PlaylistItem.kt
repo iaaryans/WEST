@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import it.vfsfitvnm.vimusic.ui.performance.SmoothArtwork
 import it.vfsfitvnm.vimusic.Database
 import it.vfsfitvnm.vimusic.models.PlaylistPreview
 import it.vfsfitvnm.vimusic.ui.components.themed.TextPlaceholder
@@ -138,6 +139,7 @@ fun PlaylistItem(
     thumbnailSizeDp: Dp,
     modifier: Modifier = Modifier,
     alternative: Boolean = false,
+    boundedArtwork: Boolean = false,
 ) {
     PlaylistItem(
         thumbnailUrl = playlist.thumbnail?.url,
@@ -147,7 +149,8 @@ fun PlaylistItem(
         thumbnailSizePx = thumbnailSizePx,
         thumbnailSizeDp = thumbnailSizeDp,
         modifier = modifier,
-        alternative = alternative
+        alternative = alternative,
+        boundedArtwork = boundedArtwork
     )
 }
 
@@ -161,15 +164,16 @@ fun PlaylistItem(
     thumbnailSizeDp: Dp,
     modifier: Modifier = Modifier,
     alternative: Boolean = false,
+    boundedArtwork: Boolean = false,
 ) {
     PlaylistItem(
         thumbnailContent = {
-            AsyncImage(
-                model = thumbnailUrl?.thumbnail(thumbnailSizePx),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = it
-            )
+            if (boundedArtwork) {
+                SmoothArtwork(thumbnailUrl, thumbnailSizePx, it)
+            } else {
+                AsyncImage(model = thumbnailUrl?.thumbnail(thumbnailSizePx),
+                    contentDescription = null, contentScale = ContentScale.Crop, modifier = it)
+            }
         },
         songCount = songCount,
         name = name,

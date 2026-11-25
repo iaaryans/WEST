@@ -15,6 +15,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import it.vfsfitvnm.vimusic.ui.performance.SmoothArtwork
 import it.vfsfitvnm.vimusic.models.Artist
 import it.vfsfitvnm.vimusic.ui.components.themed.TextPlaceholder
 import it.vfsfitvnm.vimusic.ui.styling.LocalAppearance
@@ -50,6 +51,7 @@ fun ArtistItem(
     thumbnailSizeDp: Dp,
     modifier: Modifier = Modifier,
     alternative: Boolean = false,
+    boundedArtwork: Boolean = false,
 ) {
     ArtistItem(
         thumbnailUrl = artist.thumbnail?.url,
@@ -58,7 +60,8 @@ fun ArtistItem(
         thumbnailSizePx = thumbnailSizePx,
         thumbnailSizeDp = thumbnailSizeDp,
         modifier = modifier,
-        alternative = alternative
+        alternative = alternative,
+        boundedArtwork = boundedArtwork
     )
 }
 
@@ -71,6 +74,7 @@ fun ArtistItem(
     thumbnailSizeDp: Dp,
     modifier: Modifier = Modifier,
     alternative: Boolean = false,
+    boundedArtwork: Boolean = false,
 ) {
     val (_, typography) = LocalAppearance.current
 
@@ -80,13 +84,14 @@ fun ArtistItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
     ) {
-        AsyncImage(
-            model = thumbnailUrl?.thumbnail(thumbnailSizePx),
-            contentDescription = null,
-            modifier = Modifier
-                .clip(CircleShape)
-                .requiredSize(thumbnailSizeDp)
-        )
+        val artworkModifier = Modifier.clip(CircleShape).requiredSize(thumbnailSizeDp)
+        if (boundedArtwork) {
+            SmoothArtwork(thumbnailUrl, thumbnailSizePx, artworkModifier,
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit)
+        } else {
+            AsyncImage(model = thumbnailUrl?.thumbnail(thumbnailSizePx),
+                contentDescription = null, modifier = artworkModifier)
+        }
 
         ItemInfoContainer(
             horizontalAlignment = if (alternative) Alignment.CenterHorizontally else Alignment.Start,

@@ -4,11 +4,13 @@
 .idea/
 *.apk
 *.aab
+/dist/
 
 # Local configuration
 local.properties
 
 # Signing credentials
+keystore.properties
 *.keystore
 *.jks
 *.p12

@@ -74,10 +74,12 @@ fun BrowseShell(index: Int, select: (Int) -> Unit, content: @Composable (Int) ->
                 else reveal.animateTo(1f, tween(durationMillis = 170, easing = FastOutSlowInEasing))
             }
             val enterDistance = with(LocalDensity.current) { 9.dp.toPx() }
-            Box(Modifier.fillMaxSize().graphicsLayer {
-                alpha = if (reduced) 1f else reveal.value
-                translationX = if (reduced) 0f else (1f - reveal.value) * enterDistance
-            }) {
+            val revealing by remember(reveal, reduced) { derivedStateOf { !reduced && reveal.value < 1f } }
+            val transitionModifier = if (revealing) Modifier.graphicsLayer {
+                alpha = reveal.value
+                translationX = (1f - reveal.value) * enterDistance
+            } else Modifier
+            Box(Modifier.fillMaxSize().then(transitionModifier)) {
                 tabStateHolder.SaveableStateProvider(index) { content(index) }
             }
         }
