@@ -416,7 +416,7 @@ private fun PortraitPickCard(
 ) {
     val (_, typography) = LocalAppearance.current
     val (pressSource, pressModifier) = rememberPressMotion()
-    val gradient = remember { Brush.verticalGradient(listOf(
+    val gradient = remember<Brush> { Brush.verticalGradient(listOf(
         Color.Black.copy(alpha = .24f), Color.Transparent,
         Color.Black.copy(alpha = .86f)
     )) }
@@ -462,7 +462,7 @@ private fun HomeRecentShelf(recents: List<Song>, pages: List<List<Song>>, width:
         }
     }
     val art = Dimensions.thumbnails.song
-    val queue = remember(recents) { recents.map(Song::asMediaItem) }
+    val queue = remember<List<androidx.media3.common.MediaItem>>(recents) { recents.map(Song::asMediaItem) }
     HomeSongPages(pages, width, { it.id }) { song ->
         HomeSongRow(song = song, thumbnailSize = art,
             modifier = Modifier.clickable { binder?.playSmartQueue(song.asMediaItem, queue) },
