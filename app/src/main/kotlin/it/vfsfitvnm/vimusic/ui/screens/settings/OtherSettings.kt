@@ -173,11 +173,11 @@ fun PrivacySettings() {
         if (granted) UpdateBackgroundWorker.schedule(context, autoCheckUpdates)
     }
 
-    val queriesCount by remember {
+    val queriesCount by remember<kotlinx.coroutines.flow.Flow<Int>> {
         Database.queriesCount().distinctUntilChanged()
     }.collectAsState(initial = 0)
 
-    val eventsCount by remember {
+    val eventsCount by remember<kotlinx.coroutines.flow.Flow<Int>> {
         Database.eventsCount().distinctUntilChanged()
     }.collectAsState(initial = 0)
 
