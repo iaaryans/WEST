@@ -10,6 +10,7 @@ import androidx.core.content.edit
 import it.vfsfitvnm.vimusic.BuildConfig
 import it.vfsfitvnm.vimusic.utils.preferences
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 
+@OptIn(ExperimentalCoroutinesApi::class)
 object AppUpdateManager {
     const val PREF_LAST_CHECK_MS = "westUpdateLastCheckMs"
     const val PREF_AUTO_CHECK = "westUpdateAutoCheck"
