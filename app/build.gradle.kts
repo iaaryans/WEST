@@ -122,6 +122,11 @@ dependencies {
     implementation(projects.innertube)
     implementation(projects.kugou)
 
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.json)
+
     // Spotify import unit tests: JUnit for the runner and a real org.json on
     // the JVM, because the android.jar org.json is a throwing stub and the
     // importer's parsing is exactly what the tests exercise. Test scope only.
