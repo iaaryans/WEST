@@ -20,30 +20,6 @@ import it.vfsfitvnm.vimusic.query
 import it.vfsfitvnm.vimusic.transaction
 import it.vfsfitvnm.vimusic.utils.preferences
 
-/**
- * Bridges the existing Media3 playback architecture to the listening
- * statistics database.
- *
- * Registered as a plain [Player.Listener] on the service player (one
- * `addListener` call in `PlayerService.onCreate`, one `shutdown()` in
- * `onDestroy`); it never touches player configuration, so existing
- * playback behaviour is unaffected.
- *
- * Session lifecycle:
- *  - starts when a media item becomes current (skip, auto-advance, new queue);
- *  - accumulates only while `player.isPlaying` is true;
- *  - finalizes on transition away, on STATE_ENDED/STATE_IDLE, when a
- *    REPEAT_ONE loop restarts the same item (a legitimate new play), and at
- *    service shutdown — exactly once per session;
- *  - seeks inside a song never finalize nor create sessions.
- *
- * App restarts: while a session is playing, a snapshot is persisted every
- * 15 seconds; if the process dies before the session can be flushed, the
- * snapshot is recovered and written on the next service start (loss is
- * bounded by the heartbeat interval). The snapshot is cleared BEFORE the
- * flush task is submitted, so a session can be lost in a microscopic window
- * but can never be recovered twice (no duplicate events).
- */
 class ListeningTracker(
     context: Context,
     private val player: Player
@@ -70,11 +46,8 @@ class ListeningTracker(
 
     init {
         recoverOrphanedSession()
+        active = this
     }
-
-    // ------------------------------------------------------------------
-    // Player.Listener
-    // ------------------------------------------------------------------
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         finalizeCurrent(endedAt = System.currentTimeMillis())
@@ -85,8 +58,6 @@ class ListeningTracker(
         val current = session
         if (isPlaying) {
             val active = current ?: player.currentMediaItem?.let {
-                // Safety net: playback resumed without a transition event
-                // (e.g. seeking back into a track that had reached ENDED).
                 beginSession(it)
                 session
             } ?: return
@@ -105,8 +76,6 @@ class ListeningTracker(
             Player.STATE_READY -> {
                 session?.onDurationKnown(player.duration)
                 if (session == null) {
-                    // Playback restarted on the same item after ENDED
-                    // (seek back): a legitimate replay, i.e. a new session.
                     player.currentMediaItem?.let { beginSession(it) }
                 }
             }
@@ -127,9 +96,6 @@ class ListeningTracker(
 
         val current = session ?: return
 
-        // A backward automatic jump landing at the start of the same item is
-        // a completed REPEAT_ONE loop: one full pass has been played, the
-        // next pass is a new legitimate play.
         val looped = oldPosition.mediaItemIndex == newPosition.mediaItemIndex &&
             newPosition.positionMs < LOOP_RESTART_POSITION_MS &&
             oldPosition.positionMs > MINIMUM_LOOP_MS
@@ -142,18 +108,14 @@ class ListeningTracker(
         }
     }
 
-    // ------------------------------------------------------------------
-    // Lifecycle
-    // ------------------------------------------------------------------
-
-    /** Flushes the active session; called from PlayerService.onDestroy before player.release(). */
     fun shutdown() {
         finalizeCurrent(endedAt = System.currentTimeMillis())
+        if (active === this) active = null
     }
 
-    // ------------------------------------------------------------------
-    // Internals
-    // ------------------------------------------------------------------
+    fun checkpointNow() {
+        persistSnapshot()
+    }
 
     private fun beginSession(mediaItem: MediaItem, durationMs: Long = 0L) {
         val newSession = PlaybackSession(mediaItem, System.currentTimeMillis())
@@ -175,8 +137,6 @@ class ListeningTracker(
 
         current.finalize()
 
-        // Clear BEFORE submitting the flush task: a session may be lost in a
-        // microscopic window but can never be recovered twice.
         clearSnapshot()
 
         val playedMs = current.playedMs
@@ -198,9 +158,6 @@ class ListeningTracker(
         )
 
         query {
-            // Ensure the Song (and its artist/album mappings, when the item
-            // carries them) exists so the history row's foreign key holds.
-            // Idempotent thanks to OnConflictStrategy.IGNORE.
             try {
                 Database.insert(mediaItem)
             } catch (_: Exception) {
@@ -224,10 +181,6 @@ class ListeningTracker(
         heartbeatScheduled = false
     }
 
-    // ------------------------------------------------------------------
-    // Restart recovery
-    // ------------------------------------------------------------------
-
     private fun recoverOrphanedSession() {
         if (!preferences.getBoolean(KEY_SNAPSHOT_ACTIVE, false)) return
 
@@ -242,11 +195,6 @@ class ListeningTracker(
 
         val mediaItem = decodeSnapshotMediaItem() ?: fallbackMediaItem(songId)
 
-        // One transaction: the recovered session either lands completely
-        // (history row + song play time) or not at all, so a kill between the
-        // two writes can never leave the library totals inconsistent with the
-        // history. The snapshot was cleared above, so recovery runs exactly
-        // once per interrupted session — no double accumulation is possible.
         transaction {
             try {
                 Database.insert(mediaItem)
@@ -266,12 +214,6 @@ class ListeningTracker(
             } catch (_: SQLException) {
             }
 
-            // Keep Song.totalPlayTimeMs consistent with the recovered
-            // session: normal (non-crash) playback accumulates it in
-            // PlayerService.onPlaybackStatsReady, which never runs for a
-            // process that died mid-session. Without this the song stays at
-            // zero total play time and disappears from the Songs library.
-            // Deleted/unavailable songs simply no-op (UPDATE on a missing id).
             if (playedMs > TOTAL_PLAY_TIME_MINIMUM_MS) {
                 Database.incrementTotalPlayTimeMs(songId, playedMs)
             }
@@ -342,19 +284,11 @@ class ListeningTracker(
             )
             .build()
 
-    private companion object {
-        /** Sessions shorter than this are not recorded at all (accidental skips). */
+    internal companion object {
         const val MINIMUM_SESSION_MS = 5_000L
-
-        /** Below this the play-time total is not accumulated (matches PlayerService). */
         const val TOTAL_PLAY_TIME_MINIMUM_MS = 5_000L
-
         const val HEARTBEAT_INTERVAL_MS = 15_000L
-
-        /** A repeat loop restart lands (almost) exactly at position 0. */
         const val LOOP_RESTART_POSITION_MS = 500L
-
-        /** Ignore backward jumps that did not play a meaningful amount first. */
         const val MINIMUM_LOOP_MS = 2_000L
 
         const val KEY_SNAPSHOT_ACTIVE = "listeningSnapshotActive"
@@ -367,5 +301,8 @@ class ListeningTracker(
         const val KEY_SNAPSHOT_PLAYED_MS = "listeningSnapshotPlayedMs"
         const val KEY_SNAPSHOT_LAST_SEEN_AT = "listeningSnapshotLastSeenAt"
         const val KEY_SNAPSHOT_MEDIA_ITEM = "listeningSnapshotMediaItem"
+
+        @Volatile
+        var active: ListeningTracker? = null
     }
 }

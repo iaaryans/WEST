@@ -1,5 +1,6 @@
 package it.vfsfitvnm.vimusic.ui.screens.settings
 
+import android.text.format.DateUtils
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
@@ -12,12 +13,22 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import it.vfsfitvnm.vimusic.BuildConfig
 import it.vfsfitvnm.vimusic.LocalPlayerAwareWindowInsets
+import it.vfsfitvnm.vimusic.updater.AppUpdateManager
+import it.vfsfitvnm.vimusic.updater.UpdatePromptSheet
+import it.vfsfitvnm.vimusic.updater.UpdateUiState
 import it.vfsfitvnm.vimusic.ui.components.themed.Header
 import it.vfsfitvnm.vimusic.ui.styling.LocalAppearance
+import it.vfsfitvnm.vimusic.utils.preferences
 import it.vfsfitvnm.vimusic.utils.secondary
 
 @ExperimentalAnimationApi
@@ -25,6 +36,15 @@ import it.vfsfitvnm.vimusic.utils.secondary
 fun About() {
     val (colorPalette, typography) = LocalAppearance.current
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
+    val prefs = remember { context.preferences }
+
+    val updateState by AppUpdateManager.state.collectAsState()
+    var showUpdateSheet by remember { mutableStateOf(false) }
+
+    if (showUpdateSheet) {
+        UpdatePromptSheet(onDismiss = { showUpdateSheet = false })
+    }
 
     Column(
         modifier = Modifier
@@ -43,6 +63,22 @@ fun About() {
                 style = typography.s.secondary
             )
         }
+
+        SettingsEntryGroupText(title = "UPDATES")
+
+        SettingsEntry(
+            title = "Check for updates",
+            text = updateStatusText(updateState, prefs),
+            onClick = {
+                val current = AppUpdateManager.state.value
+                if (current is UpdateUiState.Idle || current is UpdateUiState.Error) {
+                    AppUpdateManager.checkNow(context)
+                }
+                showUpdateSheet = true
+            }
+        )
+
+        SettingsGroupSpacer()
 
         SettingsEntryGroupText(title = "DEVELOPER")
 
@@ -102,4 +138,29 @@ fun About() {
             }
         )
     }
+}
+
+private fun updateStatusText(
+    state: UpdateUiState,
+    prefs: android.content.SharedPreferences
+): String {
+    val version = "v${BuildConfig.VERSION_NAME}"
+    val suffix = when (state) {
+        is UpdateUiState.UpdateAvailable -> "Update available"
+        is UpdateUiState.Checking -> "Checking..."
+        is UpdateUiState.Downloading -> "Downloading ${state.progressPercent}%"
+        is UpdateUiState.ReadyToInstall -> "Ready to install"
+        is UpdateUiState.Installing -> "Installing..."
+        is UpdateUiState.UpToDate -> "WEST is up to date"
+        is UpdateUiState.Error -> "Last check failed"
+        UpdateUiState.Idle -> {
+            val last = prefs.getLong(AppUpdateManager.PREF_LAST_CHECK_MS, 0L)
+            if (last == 0L) {
+                "Tap to check GitHub"
+            } else {
+                "Checked " + DateUtils.getRelativeTimeSpanString(last)
+            }
+        }
+    }
+    return "$version - $suffix"
 }
