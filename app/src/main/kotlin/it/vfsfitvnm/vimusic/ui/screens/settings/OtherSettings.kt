@@ -37,6 +37,7 @@ import it.vfsfitvnm.vimusic.query
 import it.vfsfitvnm.vimusic.service.PlayerMediaBrowserService
 import it.vfsfitvnm.vimusic.ui.components.themed.Header
 import it.vfsfitvnm.vimusic.ui.styling.LocalAppearance
+import it.vfsfitvnm.vimusic.updater.AppUpdateManager
 import it.vfsfitvnm.vimusic.utils.isAtLeastAndroid12
 import it.vfsfitvnm.vimusic.utils.isAtLeastAndroid6
 import it.vfsfitvnm.vimusic.utils.isIgnoringBatteryOptimizations
@@ -163,6 +164,7 @@ fun PrivacySettings() {
     var intelligenceEnabled by rememberPreference(IntelligencePreferences.ENABLED, true)
     var intelligenceDiscovery by rememberPreference(IntelligencePreferences.DISCOVERY, 35)
     var pauseSearchHistory by rememberPreference(pauseSearchHistoryKey, false)
+    var autoCheckUpdates by rememberPreference(AppUpdateManager.PREF_AUTO_CHECK, true)
 
     val queriesCount by remember {
         Database.queriesCount().distinctUntilChanged()
@@ -232,6 +234,16 @@ fun PrivacySettings() {
                 IntelligencePreferences.reset(prefs)
                 intelligenceDiscovery = 35
             }
+        )
+
+        SettingsGroupSpacer()
+        SettingsEntryGroupText(title = "UPDATES")
+
+        SwitchSettingEntry(
+            title = "Auto-check for updates on launch",
+            text = "Check GitHub for new WEST releases at most once every 6 hours",
+            isChecked = autoCheckUpdates,
+            onCheckedChange = { autoCheckUpdates = it }
         )
 
         SettingsGroupSpacer()

@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!--
       The app also runs on TV (LEANBACK_LAUNCHER below) and does not require a
@@ -131,7 +132,10 @@
             android:name=".service.PlayerService$NotificationDismissReceiver"
             android:exported="false" />
 
-        <!-- Listening statistics: shares the WEST Wrapped card as a PNG -->
+        <!-- Listening statistics: shares the WEST Wrapped card as a PNG.
+             The same FileProvider also exposes cacheDir/updates/ so the
+             in-app self-update system can hand the downloaded APK to the
+             system package installer. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

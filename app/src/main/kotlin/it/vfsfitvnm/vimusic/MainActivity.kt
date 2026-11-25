@@ -3,6 +3,8 @@
 package it.vfsfitvnm.vimusic
 
 import it.vfsfitvnm.vimusic.ui.components.themed.LocalReducedMotion
+import it.vfsfitvnm.vimusic.updater.AppUpdateManager
+import it.vfsfitvnm.vimusic.updater.IntelligenceUpdateBridge
 
 import android.content.ComponentName
 import android.content.Context
@@ -143,6 +145,18 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         val launchedFromNotification = intent?.extras?.getBoolean("expandPlayerBottomSheet") == true
+
+        lifecycleScope.launch {
+            val upgrade = IntelligenceUpdateBridge.applyPostUpdateSync(this@MainActivity)
+            if (upgrade != null) {
+                Toast.makeText(
+                    this@MainActivity,
+                    "Updated to v${upgrade.newVersion} - WEST Intelligence synced",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+        AppUpdateManager.maybeAutoCheck(this)
 
         setContent {
             val lowRamDevice = remember {
@@ -373,7 +387,6 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                 }
 
                 CompositionLocalProvider(
-                    // On low-memory Android devices, prioritize stable frame pacing.
                     LocalReducedMotion provides (reducedMotion || lowRamDevice),
                     LocalAppearance provides appearance,
                     LocalIndication provides rememberRipple(bounded = true),
@@ -386,10 +399,6 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                     if (showPersonalization) {
                         PersonalizationOnboardingScreen(onFinished = { showPersonalization = false })
                     } else {
-                    // BUG-008: while the player sheet fully covers the screen,
-                    // the Home content underneath must leave the accessibility
-                    // tree so TalkBack cannot focus hidden controls; it is
-                    // exposed again as soon as the sheet collapses.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -434,7 +443,6 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                             intent.replaceExtras(Bundle())
                             playerBottomSheetState.expand(tween(700))
                         } else if (!playerBottomSheetState.isDismissed && !playerBottomSheetState.isCollapsed && !launchedFromNotification) {
-                            // Player was expanded from previous session - collapse it to show home screen
                             playerBottomSheetState.collapse(tween(700))
                         } else if (playerBottomSheetState.isDismissed && !launchedFromNotification) {
                             playerBottomSheetState.collapse(tween(700))
@@ -461,6 +469,11 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
         }
 
         onNewIntent(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        AppUpdateManager.maybeResumeInstall(this)
     }
 
     override fun onNewIntent(intent: Intent?) {

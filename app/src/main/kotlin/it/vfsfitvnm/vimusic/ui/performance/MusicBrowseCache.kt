@@ -13,7 +13,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 
-/** Reusable screens must not refetch their feeds on every tab switch or recomposition. */
 internal object MusicBrowseCache {
     private const val TEN_MINUTES = 10L * 60 * 1000
     private const val FIVE_MINUTES = 5L * 60 * 1000
@@ -21,18 +20,22 @@ internal object MusicBrowseCache {
     private val categories = TimedLruCache<String, List<MoodExploreCategory>>(2)
     private val shelves = TimedLruCache<String, List<MoodExploreShelf>>(48)
     private val songs = TimedLruCache<String, List<Innertube.SongItem>>(45)
-    // Fixed lock stripes prevent unbounded mutex allocation and avoid the old
-    // locks.clear() race which could duplicate in-flight network requests.
     private val requestLocks = Array(64) { Mutex() }
     private val artworkRequests = Semaphore(2)
     private val artworks = TimedLruCache<String, String>(64)
     private fun artworkKey(category: MoodExploreCategory) =
         "artwork/${category.browseId}/${category.params.orEmpty()}"
 
-    /** Read-only warm starts: no network on the first frame after a tab switch. */
     fun peekExploreCategories(): List<MoodExploreCategory>? = categories.get("explore/all")
     fun peekCategoryArtwork(category: MoodExploreCategory): String? =
         category.imageUrl ?: artworks.get(artworkKey(category))
+
+    fun invalidateAll() {
+        categories.clear()
+        shelves.clear()
+        songs.clear()
+        artworks.clear()
+    }
 
     private suspend fun <V : Any> cached(
         key: String,
@@ -64,7 +67,6 @@ internal object MusicBrowseCache {
         }, { it.isNotEmpty() })
     }
 
-    /** One or two *visible* cards may resolve artwork at once, never 40 HTTP requests. */
     suspend fun categoryArtwork(category: MoodExploreCategory): String? {
         peekCategoryArtwork(category)?.let { return it }
         if (category.browseId.isBlank()) return null

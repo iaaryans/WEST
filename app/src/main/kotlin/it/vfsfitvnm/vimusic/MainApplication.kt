@@ -5,6 +5,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import it.vfsfitvnm.vimusic.enums.CoilDiskCacheMaxSize
+import it.vfsfitvnm.vimusic.updater.AppUpdateManager
 import it.vfsfitvnm.vimusic.utils.WestAnalytics
 import it.vfsfitvnm.vimusic.utils.coilDiskCacheMaxSizeKey
 import it.vfsfitvnm.vimusic.utils.getEnum
@@ -16,13 +17,11 @@ class MainApplication : Application(), ImageLoaderFactory {
         DatabaseInitializer()
         WestAnalytics.initialize(this, "A-EU-0738338387")
         WestAnalytics.trackEvent("app_started")
+        AppUpdateManager.cleanupStaleApks(this)
     }
 
     override fun newImageLoader(): ImageLoader {
         return ImageLoader.Builder(this)
-            // Each scrollable shelf already provides its own interaction motion.
-            // Animated bitmap crossfades on dozens of concurrent image loads
-            // create unnecessary overlapping layers and dropped frames.
             .crossfade(false)
             .respectCacheHeaders(false)
             .diskCache(
