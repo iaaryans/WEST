@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import it.vfsfitvnm.vimusic.enums.CoilDiskCacheMaxSize
 import it.vfsfitvnm.vimusic.updater.AppUpdateManager
+import it.vfsfitvnm.vimusic.updater.UpdateBackgroundWorker
 import it.vfsfitvnm.vimusic.utils.WestAnalytics
 import it.vfsfitvnm.vimusic.utils.coilDiskCacheMaxSizeKey
 import it.vfsfitvnm.vimusic.utils.getEnum
@@ -18,6 +19,7 @@ class MainApplication : Application(), ImageLoaderFactory {
         WestAnalytics.initialize(this, "A-EU-0738338387")
         WestAnalytics.trackEvent("app_started")
         AppUpdateManager.cleanupStaleApks(this)
+        UpdateBackgroundWorker.schedule(this, preferences.getBoolean(AppUpdateManager.PREF_AUTO_CHECK, true))
     }
 
     override fun newImageLoader(): ImageLoader {
