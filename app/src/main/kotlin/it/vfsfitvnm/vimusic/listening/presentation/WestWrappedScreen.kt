@@ -360,7 +360,7 @@ private fun WrappedCard(summary: WrappedSummary) {
 @Composable
 private fun WrappedStory(summary: WrappedSummary, close: () -> Unit) {
     val (palette, type) = LocalAppearance.current
-    val slides = remember(summary) {
+    val slides = remember<List<Pair<String, String>>>(summary) {
         buildList {
             add("Listening time" to formatListeningDuration(summary.totalListeningMs))
             add("Tracks played" to formatPlural(summary.totalPlays, "play"))
