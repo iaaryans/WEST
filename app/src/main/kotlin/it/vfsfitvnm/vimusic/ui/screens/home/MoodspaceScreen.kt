@@ -85,7 +85,9 @@ internal fun MoodspaceScreen(onBack: (() -> Unit)? = null, onBrowseClick: (Strin
     val artwork = remember { mutableStateMapOf<String, String>() }
     // Maintain a bounded, per-screen negative/positive lookup ledger; don't launch
     // network work from each card composition while the user is flinging.
-    val attemptedArtworks = remember<HashSet<String>> { HashSet<String>() }
+    // The calculation returns a mutable set, not Unit; older Compose lint misidentifies it.
+    @Suppress("RememberReturnType")
+    val attemptedArtworks = remember { mutableSetOf<String>() }
     // The offline catalog is rendered immediately, before the network has responded.
     LaunchedEffect(refresh) {
         catalogLoading = true
