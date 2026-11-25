@@ -74,7 +74,7 @@ internal fun HomeSongRow(
     song: Innertube.SongItem, thumbnailSize: Dp, modifier: Modifier = Modifier,
     trailingContent: (@Composable () -> Unit)? = null
 ) = HomeSongRowContent(song.thumbnail?.url, song.info?.name,
-    remember(song.authors) { song.authors?.joinToString(", ") { it.name.orEmpty() } }, song.durationText,
+    remember<String?>(song.authors) { song.authors?.joinToString(", ") { it.name.orEmpty() } }, song.durationText,
     thumbnailSize, modifier, trailingContent)
 
 @Composable
