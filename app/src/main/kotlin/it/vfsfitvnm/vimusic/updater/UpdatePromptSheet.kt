@@ -80,6 +80,7 @@ fun UpdatePromptSheet(
                 is UpdateUiState.UpToDate -> UpToDateContent(onDismiss)
                 is UpdateUiState.Error -> ErrorContent(
                     message = s.message,
+                    onRetry = { AppUpdateManager.checkNow(context) },
                     onDismiss = onDismiss
                 )
                 UpdateUiState.Checking, UpdateUiState.Idle -> CheckingContent()
@@ -230,6 +231,7 @@ private fun UpToDateContent(onDismiss: () -> Unit) {
 @Composable
 private fun ErrorContent(
     message: String,
+    onRetry: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val (_, typography) = LocalAppearance.current
@@ -249,7 +251,8 @@ private fun ErrorContent(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
     ) {
-        DialogTextButton(text = "Close", primary = true, onClick = onDismiss)
+        DialogTextButton(text = "Close", onClick = onDismiss)
+        DialogTextButton(text = "Retry", primary = true, onClick = onRetry)
     }
 }
 
