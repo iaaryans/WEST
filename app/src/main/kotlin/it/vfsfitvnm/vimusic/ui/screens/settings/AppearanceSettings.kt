@@ -38,7 +38,7 @@ import it.vfsfitvnm.vimusic.utils.useSystemFontKey
 fun AppearanceSettings() {
     val (colorPalette) = LocalAppearance.current
 
-    var colorPaletteName by rememberPreference(colorPaletteNameKey, ColorPaletteName.Dynamic)
+    var colorPaletteName by rememberPreference(colorPaletteNameKey, ColorPaletteName.Default)
     var colorPaletteMode by rememberPreference(colorPaletteModeKey, ColorPaletteMode.System)
     var thumbnailRoundness by rememberPreference(
         thumbnailRoundnessKey,
@@ -62,7 +62,9 @@ fun AppearanceSettings() {
                     .asPaddingValues()
             )
     ) {
-        Header(title = "Appearance")
+        Header(title = "Appearance & motion")
+        var reducedMotion by rememberPreference("reduceMotion", false)
+        SwitchSettingEntry("Reduce motion", "Simpler transitions and no decorative pulses", reducedMotion, { reducedMotion = it })
 
         SettingsEntryGroupText(title = "COLORS")
 

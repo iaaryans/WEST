@@ -1,4 +1,6 @@
 package it.vfsfitvnm.vimusic.ui.components.themed
+import it.vfsfitvnm.vimusic.R
+
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Image
@@ -23,13 +25,15 @@ fun HeaderIconButton(
     color: Color,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    indication: Indication? = null
+    indication: Indication? = null,
+    description: String? = null
 ) {
     IconButton(
         icon = icon,
         color = color,
         onClick = onClick,
         enabled = enabled,
+        description = description,
         indication = indication,
         modifier = modifier
             .padding(all = 4.dp)
@@ -44,11 +48,20 @@ fun IconButton(
     color: Color,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    indication: Indication? = null
+    indication: Indication? = null,
+    description: String? = null
 ) {
     Image(
         painter = painterResource(icon),
-        contentDescription = null,
+        contentDescription = description ?: when (icon) {
+            R.drawable.play -> "Play"
+            R.drawable.pause -> "Pause"
+            R.drawable.play_skip_forward -> "Next track"
+            R.drawable.play_skip_back -> "Previous track"
+            R.drawable.chevron_back -> "Back"
+            R.drawable.ellipsis_horizontal -> "More options"
+            else -> androidx.compose.ui.platform.LocalContext.current.resources.getResourceEntryName(icon).replace('_', ' ')
+        },
         colorFilter = ColorFilter.tint(color),
         modifier = Modifier
             .clickable(

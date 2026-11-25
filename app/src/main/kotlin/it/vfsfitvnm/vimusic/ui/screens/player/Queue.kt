@@ -1,4 +1,9 @@
 package it.vfsfitvnm.vimusic.ui.screens.player
+import it.vfsfitvnm.vimusic.ui.components.themed.Menu
+import it.vfsfitvnm.vimusic.utils.canRestoreQueue
+import it.vfsfitvnm.vimusic.utils.restorePreviousQueue
+import it.vfsfitvnm.vimusic.ui.components.themed.MenuEntry
+
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentScope
@@ -6,6 +11,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.fadeIn
@@ -75,6 +81,7 @@ import it.vfsfitvnm.vimusic.ui.styling.onOverlay
 import it.vfsfitvnm.vimusic.ui.styling.px
 import it.vfsfitvnm.vimusic.utils.DisposableListener
 import it.vfsfitvnm.vimusic.utils.medium
+import it.vfsfitvnm.vimusic.utils.smartContinueEnabledKey
 import it.vfsfitvnm.vimusic.utils.queueLoopEnabledKey
 import it.vfsfitvnm.vimusic.utils.rememberPreference
 import it.vfsfitvnm.vimusic.utils.shouldBePlaying
@@ -88,6 +95,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun Queue(
     backgroundColorProvider: () -> Color,
+    onClear: () -> Unit,
     layoutState: BottomSheetState,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
@@ -109,15 +117,6 @@ fun Queue(
                     .fillMaxSize()
                     .padding(horizontalBottomPaddingValues)
             ) {
-                Image(
-                    painter = painterResource(R.drawable.playlist),
-                    contentDescription = null,
-                    colorFilter = ColorFilter.tint(colorPalette.text),
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(18.dp)
-                )
-
                 content()
             }
         }
@@ -129,6 +128,7 @@ fun Queue(
         val player = binder.player
 
         var queueLoopEnabled by rememberPreference(queueLoopEnabledKey, defaultValue = true)
+        var smartContinueEnabled by rememberPreference(smartContinueEnabledKey, defaultValue = true)
 
         val menuState = LocalMenuState.current
 
@@ -202,6 +202,12 @@ fun Queue(
                         key = { it.uid.hashCode() }
                     ) { window ->
                         val isPlayingThisMediaItem = mediaItemIndex == window.firstPeriodIndex
+                        // Keep the now-playing row identifiable while changing tracks,
+                        // without flashing a brand-new background on every transition.
+                        val playingTint by animateColorAsState(
+                            if (isPlayingThisMediaItem) colorPalette.accent.copy(alpha = 0.11f)
+                            else Color.Transparent
+                        )
 
                         SongItem(
                             song = window.mediaItem,
@@ -255,6 +261,7 @@ fun Queue(
                                 )
                             },
                             modifier = Modifier
+                                .background(playingTint, RoundedCornerShape(12.dp))
                                 .combinedClickable(
                                     onLongClick = {
                                         menuState.display {
@@ -288,17 +295,18 @@ fun Queue(
 
                     item {
                         if (binder.isLoadingRadio) {
-                            Column(
-                                modifier = Modifier
-                                    .shimmer()
-                            ) {
-                                repeat(3) { index ->
-                                    SongItemPlaceholder(
-                                        thumbnailSizeDp = thumbnailSizeDp,
-                                        modifier = Modifier
-                                            .alpha(1f - index * 0.125f)
-                                            .fillMaxWidth()
-                                    )
+                            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                BasicText("WEST Intelligence is finding more songs…",
+                                    style = typography.xxs.medium)
+                                Column(modifier = Modifier.shimmer()) {
+                                    repeat(3) { index ->
+                                        SongItemPlaceholder(
+                                            thumbnailSizeDp = thumbnailSizeDp,
+                                            modifier = Modifier
+                                                .alpha(1f - index * 0.125f)
+                                                .fillMaxWidth()
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -342,14 +350,26 @@ fun Queue(
                         .padding(all = 8.dp)
                 )
 
-                Image(
-                    painter = painterResource(R.drawable.chevron_down),
-                    contentDescription = null,
-                    colorFilter = ColorFilter.tint(colorPalette.text),
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(18.dp)
-                )
+                IconButton(icon = R.drawable.ellipsis_horizontal, color = colorPalette.text, description = "Queue options",
+                    modifier = Modifier.align(Alignment.Center).padding(12.dp).size(24.dp),
+                    onClick = {
+                        menuState.display {
+                            Menu {
+                                if (player.canRestoreQueue()) MenuEntry(R.drawable.playlist, "Restore previous queue", onClick = {
+                                    menuState.hide()
+                                    binder.stopRadio()
+                                    player.restorePreviousQueue()
+                                })
+                                MenuEntry(R.drawable.infinite,
+                                    if (smartContinueEnabled) "Smart Continue: on" else "Smart Continue: off",
+                                    onClick = {
+                                        smartContinueEnabled = !smartContinueEnabled
+                                        if (!smartContinueEnabled) binder.stopRadio()
+                                        menuState.hide()
+                                    })
+                                MenuEntry(R.drawable.trash, "Clear queue", onClick = { menuState.hide(); onClear() }) }
+                        }
+                    })
 
                 Row(
                     modifier = Modifier

@@ -1,21 +1,17 @@
 package it.vfsfitvnm.vimusic.ui.components.themed
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedContentScope
-import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.ExperimentalAnimationApi
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.VisibilityThreshold
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.with
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import it.vfsfitvnm.vimusic.LocalPlayerAwareWindowInsets
 import it.vfsfitvnm.vimusic.ui.styling.LocalAppearance
+import it.vfsfitvnm.vimusic.utils.isLandscape
 
 @ExperimentalAnimationApi
 @Composable
@@ -24,43 +20,38 @@ fun Scaffold(
     onTopIconButtonClick: () -> Unit,
     tabIndex: Int,
     onTabChanged: (Int) -> Unit,
-    tabColumnContent: @Composable ColumnScope.(@Composable (Int, String, Int) -> Unit) -> Unit,
+    tabColumnContent: @Composable (@Composable (Int, String, Int) -> Unit) -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable AnimatedVisibilityScope.(Int) -> Unit
 ) {
-    val (colorPalette) = LocalAppearance.current
+    val landscape = isLandscape
+    val insets = LocalPlayerAwareWindowInsets.current
+    val root = modifier.fillMaxSize().background(LocalAppearance.current.colorPalette.background0)
+    val page: @Composable () -> Unit = {
+        if (LocalReducedMotion.current) {
+            AnimatedContent(targetState = tabIndex, transitionSpec = { EnterTransition.None with ExitTransition.None }, content = content)
+        } else AnimatedContent(targetState = tabIndex, transitionSpec = {
+            val direction = if (targetState > initialState) 1 else -1
+            (slideInHorizontally(tween(180)) { direction * it / 12 } + fadeIn(tween(140))) with
+                (slideOutHorizontally(tween(160)) { -direction * it / 12 } + fadeOut(tween(120)))
+        }, content = content)
+    }
 
-    Row(
-        modifier = modifier
-            .background(colorPalette.background0)
-            .fillMaxSize()
-    ) {
-        NavigationRail(
-            topIconButtonId = topIconButtonId,
-            onTopIconButtonClick = onTopIconButtonClick,
-            tabIndex = tabIndex,
-            onTabIndexChanged = onTabChanged,
-            content = tabColumnContent
-        )
-
-        AnimatedContent(
-            targetState = tabIndex,
-            transitionSpec = {
-                val slideDirection = when (targetState > initialState) {
-                    true -> AnimatedContentScope.SlideDirection.Up
-                    false -> AnimatedContentScope.SlideDirection.Down
-                }
-
-                val animationSpec = spring(
-                    dampingRatio = 0.9f,
-                    stiffness = Spring.StiffnessLow,
-                    visibilityThreshold = IntOffset.VisibilityThreshold
-                )
-
-                slideIntoContainer(slideDirection, animationSpec) with
-                        slideOutOfContainer(slideDirection, animationSpec)
-            },
-            content = content
-        )
+    if (landscape) {
+        Row(root) {
+            NavigationRail(topIconButtonId, onTopIconButtonClick, tabIndex, onTabChanged, true,
+                tabColumnContent, Modifier.padding(insets.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start).asPaddingValues()))
+            Box(Modifier.weight(1f).fillMaxHeight()) { page() }
+        }
+    } else {
+        Column(root) {
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                CompositionLocalProvider(LocalPlayerAwareWindowInsets provides
+                    insets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)) { page() }
+            }
+            NavigationRail(topIconButtonId, onTopIconButtonClick, tabIndex, onTabChanged, false,
+                tabColumnContent, Modifier.padding(insets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal).asPaddingValues())
+                    .padding(horizontal = 10.dp, vertical = 4.dp))
+        }
     }
 }

@@ -2,6 +2,9 @@ package it.vfsfitvnm.vimusic.ui.components
 
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -18,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
@@ -50,11 +55,20 @@ fun SeekBar(
 
     val currentBarHeight by transition.animateDp(label = "") { if (it) scrubberRadius else barHeight }
     val currentScrubberRadius by transition.animateDp(label = "") { if (it) 0.dp else scrubberRadius }
+    val safeRange = (maximumValue - minimumValue).takeIf { it > 0L }
+    val rawProgress = safeRange?.let {
+        ((value - minimumValue).toFloat() / it).coerceIn(0f, 1f)
+    } ?: 0f
+    val playbackProgress by animateFloatAsState(
+        targetValue = rawProgress,
+        animationSpec = tween(durationMillis = 130, easing = LinearEasing)
+    )
+    val displayProgress = if (isDragging.targetState || isDragging.currentState) rawProgress else playbackProgress
 
     Box(
         modifier = modifier
             .pointerInput(minimumValue, maximumValue) {
-                if (maximumValue < minimumValue) return@pointerInput
+                if (maximumValue <= minimumValue) return@pointerInput
 
                 var acc = 0f
 
@@ -83,7 +97,7 @@ fun SeekBar(
                 )
             }
             .pointerInput(minimumValue, maximumValue) {
-                if (maximumValue < minimumValue) return@pointerInput
+                if (maximumValue <= minimumValue) return@pointerInput
 
                 detectTapGestures(
                     onPress = { offset ->
@@ -98,11 +112,7 @@ fun SeekBar(
             .drawWithContent {
                 drawContent()
 
-                val scrubberPosition = if (maximumValue < minimumValue) {
-                    0f
-                } else {
-                    (value.toFloat() - minimumValue) / (maximumValue - minimumValue) * size.width
-                }
+                val scrubberPosition = displayProgress * size.width
 
                 drawCircle(
                     color = scrubberColor,
@@ -110,8 +120,10 @@ fun SeekBar(
                     center = center.copy(x = scrubberPosition)
                 )
 
-                if (drawSteps) {
-                    for (i in value + 1..maximumValue) {
+                // Pixel bars cannot display millions of time-unit ticks. Prevent
+                // pathological draw loops if a caller enables step markers.
+                if (drawSteps && safeRange != null && safeRange <= 64L) {
+                    for (i in minimumValue + 1..maximumValue) {
                         val stepPosition =
                             (i.toFloat() - minimumValue) / (maximumValue - minimumValue) * size.width
                         drawCircle(
@@ -135,7 +147,13 @@ fun SeekBar(
         Spacer(
             modifier = Modifier
                 .height(currentBarHeight)
-                .fillMaxWidth((value.toFloat() - minimumValue) / (maximumValue - minimumValue))
+                .fillMaxWidth()
+                // Draw-layer scaling instead of measuring a new width on each
+                // playback position tick. Keeps the seek bar at 60/90/120 Hz.
+                .graphicsLayer {
+                    scaleX = displayProgress
+                    transformOrigin = TransformOrigin(0f, .5f)
+                }
                 .background(color = color, shape = shape)
                 .align(Alignment.CenterStart)
         )

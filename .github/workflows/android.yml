@@ -1,31 +1,132 @@
-name: CI
- 
+name: WEST - Build and Verify APK
+
 on:
+  workflow_dispatch:
   push:
-    branches: [ "master", "main" ]
+    branches:
+      - main
+      - west-fix
   pull_request:
-    branches: [ "master", "main" ]
+
+permissions:
+  contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-and-test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out WEST source
+        uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 17 and Gradle cache
         uses: actions/setup-java@v4
         with:
-          java-version: "17"
-          distribution: "temurin"
+          distribution: temurin
+          java-version: '17'
           cache: gradle
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Build with Gradle
-        run: ./gradlew assembleDebug
-
-      - uses: actions/upload-artifact@v4
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v4
         with:
-          name: app-debug.apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          packages: platform-tools
+
+      - name: Install required Android platform
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager 'platforms;android-34' 'build-tools;34.0.0' 'platform-tools'
+          chmod +x gradlew
+
+      - name: Run mandatory JVM regression tests
+        run: ./gradlew --no-daemon --stacktrace -PwestPreview :app:testDebugUnitTest :innertube:test :kugou:test
+
+      - name: Run Android lint
+        run: ./gradlew --no-daemon --stacktrace -PwestPreview :app:lintDebug
+
+      - name: Build WEST APK
+        run: ./gradlew --no-daemon --stacktrace -PwestPreview :app:assembleDebug
+
+      - name: Run Android instrumentation regression tests (manual only)
+        if: github.event_name == 'workflow_dispatch'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: ./gradlew --no-daemon --stacktrace -PwestPreview :app:connectedDebugAndroidTest
+
+      - name: Verify and package WEST APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          mapfile -t apks < <(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | sort)
+          if (( ${#apks[@]} == 0 )); then
+            echo 'No newly compiled APK found' >&2
+            exit 1
+          fi
+          apk=''
+          for candidate in "${apks[@]}"; do
+            if [[ "$candidate" == *universal* ]]; then
+              apk="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$apk" && ${#apks[@]} -eq 1 ]]; then
+            apk="${apks[0]}"
+          fi
+          if [[ -z "$apk" ]]; then
+            echo 'Multiple APKs generated, but no universal APK found.' >&2
+            exit 1
+          fi
+          cp "$apk" dist/WEST.apk
+          unzip -tq dist/WEST.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose dist/WEST.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging dist/WEST.apk > dist/APK_BADGING.txt
+          grep -q "application-label:'WEST'" dist/APK_BADGING.txt || {
+            echo 'The APK does not expose WEST as the application label.' >&2
+            exit 1
+          }
+          size=$(stat -c%s dist/WEST.apk)
+          {
+            echo "WEST build commit: $GITHUB_SHA"
+            echo 'Build variant: westPreview debug'
+            echo 'Artifact: WEST.apk'
+            echo "APK size in bytes: $size"
+            echo 'Required size: greater than 25000000 bytes'
+            echo 'JVM tests: passed (workflow gate)'
+            echo 'Android lint: passed (workflow gate)'
+            echo 'APK signature: verified'
+          } > dist/BUILD_REPORT.txt
+          if (( size <= 25000000 )); then
+            echo "APK size requirement not met: $size bytes" | tee -a dist/BUILD_REPORT.txt >&2
+            exit 1
+          fi
+          git archive --format=zip --output=dist/WEST-Full-Source.zip HEAD
+          (cd dist && sha256sum WEST.apk WEST-Full-Source.zip > SHA256SUMS.txt)
+
+      - name: Upload final WEST build
+        uses: actions/upload-artifact@v4
+        with:
+          name: WEST-Verified-Build
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload diagnostic and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WEST-Test-Diagnostics
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/lint-results*
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+            dist/BUILD_REPORT.txt
+          if-no-files-found: ignore
+          retention-days: 14

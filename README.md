@@ -1,5 +1,9 @@
 <div align="center">
-  <img src="./app/src/main/logo.png" width="128" height="128" alt="WEST logo" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./app/src/main/res/drawable-nodpi/west_logo_full_light.png" />
+    <source media="(prefers-color-scheme: light)" srcset="./app/src/main/res/drawable-nodpi/west_logo_full_dark.png" />
+    <img src="./app/src/main/res/drawable-nodpi/west_logo_full_dark.png" width="360" alt="WEST — official red waveform logo" />
+  </picture>
   <h1>WEST</h1>
   <p><b>An Android music client for YouTube Music, forked from ViMusic.</b></p>
 </div>
@@ -8,70 +12,71 @@
 
 ## 1. Introduction
 
-WEST is an Android application (Kotlin, Jetpack Compose) that searches and streams music from YouTube Music, with local playlists, a persistent queue, lyrics and an audio cache. It is a modified version of [ViMusic](https://github.com/vfsfitvnm/ViMusic) by vfsfitvnm and contributors, released under GPL-3.0.
+WEST is an Android music client built with Kotlin and Jetpack Compose. It uses YouTube Music discovery and streaming, local playlists, a persistent Media3/ExoPlayer queue, lyrics, audio caching, and WEST-specific discovery and personalization features. WEST descends from [ViMusic](https://github.com/vfsfitvnm/ViMusic) and retains the applicable upstream copyright and GPL-3.0 obligations.
 
-> **Naming note.** The repository is `iaaryans/WEST`. The Gradle root project is still named `ViMusic`, and the Kotlin package and application ID are still `it.vfsfitvnm.vimusic`, inherited from upstream. "VIMUSIC" in older notes refers to this same codebase.
+**Repository and naming.** Development in this contribution takes place at [adarsh01-cyber/WEST](https://github.com/adarsh01-cyber/WEST) on `west-e2e-update`; the [upstream contribution PR](https://github.com/iaaryans/WEST/pull/2) targets `iaaryans/WEST:main`. The Gradle root project is named `WEST`. The inherited Kotlin package and base application ID remain `it.vfsfitvnm.vimusic`; they are identifiers, not a second product name. Debug variants can append `.debug` or, with `-PwestPreview`, `.preview`.
 
-The project is beta software; the current release is v0.5.4 (`versionCode 20`).
-
-**About this revision.** This document is a continuation of the previous WEST README, updated against the final fixed source tree. Since the previous revision (which described the baseline at commit `8854fbb`), the source gained three commits — `3bfb2ca` ("WEST-main baseline (unmodified)"), `bb6441b` ("Integrate Spotify playlist import (ported from BitChord)") and `af23d0b` ("Add advanced listening statistics (isolated listening module)") — plus a final, uncommitted fix batch on top of `af23d0b` that repairs a metadata-parsing bug in the InnerTube module, a crash risk in the all-time trend calculation, contrast problems in the Wrapped share card, hardware-keyboard search submission, screen-reader behaviour, and adds voice search. All of this is part of the source shipped here; section 20 lists every change in detail. Unlike the previous revision, the debug APK and the unit test suite were actually built and run while preparing this document (see sections 10 and 13 for the concrete results).
+**Documentation baseline (24 November 2026).** Sections 1–19 describe the current `west-e2e-update` source, not every historical beta or ZIP. The source still declares `versionName 0.5.4` and `versionCode 20`; this is not a claim that a new production release has been published. Section 20 and its dated notes preserve older implementation history and must not override current source, build, or CI facts. “Implemented” below means there is a wired code path; it does **not** certify successful operation with live upstream services on every device.
 
 ## 2. Overview
 
-| Item | Value | Source |
+| Item | Current source value | Source |
 | --- | --- | --- |
-| Application ID | `it.vfsfitvnm.vimusic` (`.debug` suffix for debug builds, which is what the v0.5.4 beta APK uses) | `app/build.gradle.kts`, APK manifest |
-| Version | 0.5.4 (code 20) | `app/build.gradle.kts` |
+| Product / Gradle root project | WEST | `settings.gradle.kts` |
+| Base application ID / namespace | `it.vfsfitvnm.vimusic` | `app/build.gradle.kts` |
+| Debug application IDs | `it.vfsfitvnm.vimusic.debug` normally; `it.vfsfitvnm.vimusic.preview` with `-PwestPreview` | `app/build.gradle.kts` |
+| Source version | `0.5.4` (`versionCode 20`) | `app/build.gradle.kts` |
 | minSdk / targetSdk / compileSdk | 21 / 34 / 34 | `app/build.gradle.kts` |
-| Modules | 7 (`app` plus six libraries) | `settings.gradle.kts` |
-| Kotlin source files | 227 on disk: 224 tracked (one of which, `ListeningHistoryScreen.kt`, is deleted by the final fix batch) plus 4 new files it adds, including unit tests | `find` / `git ls-files` |
-| Database | Room, schema version 24 | `app/schemas/.../24.json` |
+| Toolchain | JDK 17, Android Gradle Plugin 7.3.0, Gradle wrapper 7.4 | Build files and CI |
+| Gradle modules | 7 (`app` and six support libraries) | `settings.gradle.kts` |
+| Database | Room, schema version 24 | `app/schemas/`, `Database.kt` |
 | License | GPL-3.0 | `LICENSE` |
+| Main navigation | Home → Moodspace → Search → Library | `ui/screens/home/HomeScreen.kt` |
 
-The two largest classes are still `service/PlayerService.kt` (1,068 lines) and `Database.kt` (689 lines).
+Source counts, class line counts, APK sizes, and test totals from older revisions are intentionally not treated as fixed project properties: they change when code or build configurations change.
 
 ## 3. Features
 
-Status reflects code inspection plus, where stated, a successful local build. "Implemented" means a code path exists and is wired to UI or services. It does not mean the feature has been tested against live YouTube or Spotify responses on a device.
+The table describes **features wired in this source branch**, not a full device-level acceptance test. “Limited” identifies documented scope or dependencies. Online discovery and playback depend on third-party services and connectivity.
 
-| Feature | Status | Main files |
+| Feature area | Current implementation and limitations | Representative source |
 | --- | --- | --- |
-| Search songs, videos, albums, artists, playlists | Implemented | `ui/screens/search/*`, `ui/screens/searchresult/*`, `innertube/.../requests/SearchPage.kt` |
-| Search suggestions and local search history | Implemented | `innertube/.../requests/SearchSuggestions.kt`, `OnlineSearch.kt`, `models/SearchQuery.kt` |
-| Search submission from a hardware keyboard (Enter / numpad Enter) | Implemented in this revision (BUG-004 fix) | `ui/screens/search/OnlineSearch.kt` |
-| Streaming playback via Media3/ExoPlayer | Implemented, depends on undocumented YouTube behaviour (see Limitations) | `service/PlayerService.kt`, `innertube/.../requests/Player.kt` |
-| Background playback, notification, media session | Implemented | `service/PlayerService.kt` |
-| Persistent queue (restored on start) | Implemented | `PlayerService.kt` (`maybeRestorePlayerQueue`), `Database.kt` |
-| Queue reordering, playlist reordering | Implemented | `compose-reordering/`, `ui/screens/player/Queue.kt`, `LocalPlaylistSongs.kt` |
-| Local playlists, favorites, bookmarked albums/artists | Implemented | `Database.kt`, `ui/screens/home/*`, `ui/screens/localplaylist/*` |
-| **Spotify playlist import** (new in this revision) | Implemented; public playlists only | `spotify/SpotifyImporter.kt`, `spotify/TrackMatcher.kt`, `ui/screens/spotify/SpotifyImportScreen.kt` |
-| **Listening statistics dashboard** (new in this revision): overview, trend charts, streaks, top songs/artists/albums, calendar heatmap | Implemented | `listening/` module (see section 6), `ui/screens/home/HomeScreen.kt` ("Insights" sidebar entry) |
-| **WEST Wrapped** annual summary with shareable PNG card (new in this revision) | Implemented | `listening/presentation/WestWrappedScreen.kt`, `WrappedShareCard.kt`, `WrappedCardPalette.kt`, `AndroidManifest.xml` (FileProvider) |
-| Voice search ("play … on WEST", assistant / Android Auto) (new in this revision) | Implemented, local library only | `service/PlayerService.kt`, `service/PlayerMediaBrowserService.kt`, `AndroidManifest.xml` |
-| Android TV (Leanback launcher) (new in this revision) | Implemented at the manifest level; UI unchanged | `AndroidManifest.xml`, `res/values-v29/themes.xml` |
-| Audio disk cache with size limit | Implemented | `PlayerService.kt` (`SimpleCache`), `enums/ExoPlayerDiskCacheMaxSize.kt`, `CacheSettings.kt` |
-| Lyrics: YouTube Music, KuGou synced lyrics, manual editing | Implemented | `ui/screens/player/Lyrics.kt`, `kugou/`, `innertube/.../requests/Lyrics.kt` |
-| Sleep timer | Implemented | `PlayerService.kt`, `MediaItemMenu.kt` |
-| Skip silence, volume normalization | Implemented | `PlayerService.kt`, `PlayerSettings.kt` |
-| Radio / related songs | Implemented | `utils/YoutubeRadio.kt`, `NextPage.kt`, `RelatedPage.kt` |
-| Themes: light, dark, dynamic (album-art palette) | Implemented | `ui/styling/*`, `MainActivity.kt`, `androidx.palette` |
-| Database backup and restore (file based) | Implemented | `ui/screens/settings/DatabaseSettings.kt` |
-| Android Auto media browser | Partially: service exists but is disabled in the manifest and toggled from Settings > Other; voice-search intent filter and `onPlayFromSearch` added in this revision | `service/PlayerMediaBrowserService.kt`, `OtherSettings.kt` |
-| Open YouTube / YouTube Music links | Implemented (intent filters) | `AndroidManifest.xml`, `MainActivity.kt` |
-| "Stats for nerds" overlay | Implemented | `ui/screens/player/StatsForNerds.kt` |
-| Anonymous usage analytics (Aptabase) | Implemented, enabled in code with no in-app opt-out | `utils/WestAnalytics.kt`, `MainApplication.kt` |
-| JVM unit tests | **New in this revision**: 8 test classes in `app` and `innertube` (previous README reported none) | `app/src/test/`, `innertube/src/test/` |
-| Offline downloads, account login | Not present | none |
+| Four-tab navigation | Home, Moodspace, Search, Library; Library has Playlists / Songs / Artists / Albums | `ui/screens/home/HomeScreen.kt` |
+| Home discovery | Quick picks, recents, personalized shelves, artist/album/playlist discovery and shortcuts; Moodspace is a separate tab, not a duplicated Home section | `ui/screens/home/QuickPicks.kt`, `HomeShelfPolicy.kt` |
+| WEST Intelligence | On-device, heuristic recommendations using taste selections, listening, favorites and feedback; no trained/cloud-hosted LLM | `intelligence/RecommendationEngine.kt`, `RecommendationRepository.kt` |
+| First-launch personalization | Skippable language, searchable-artist, song and mood preference selection; taste stored locally, editable/resettable | `personalization/TasteProfile.kt`, `PersonalizationOnboardingScreen.kt` |
+| Moodspace Explore | Two-column browse categories, online shelves/playlists, fallback categories, personalized song queries and playback; catalog contents depend on provider responses | `ui/screens/home/MoodspaceScreen.kt`, `MoodspaceCatalog.kt`, `innertube/.../MoodExplore.kt` |
+| Timed mixes | Duration-bounded mixes assembled from available library songs, with remix/ending options; requires eligible local library content | `ui/screens/home/MixScreen.kt`, `TimedMix.kt` |
+| Search | Online catalog search, suggestions, saved/recent/pinned queries, library search, listening-history search and smart discovery/filtering | `ui/screens/search/`, `ui/screens/searchresult/` |
+| Search safety | Centralized query submission, saved-history navigation handling and keyboard/IME regression coverage | `SearchSubmission.kt`, `app/src/androidTest/.../SearchNavigationTest.kt` |
+| WEST Voice | Push-to-talk **music query input** using Android speech recognition; does not expose a general voice assistant or voice-controlled playback commands through this dialog | `voice/VoiceSearchDialog.kt`, `voice/VoiceMusicQuery.kt` |
+| Android media search integration | Separate `onPlayFromSearch` integration for MediaSession / media browser; limited by device and service availability | `service/PlayerService.kt`, `PlayerMediaBrowserService.kt` |
+| Hybrid Smart Queue | Playing a search result seeds a bounded queue; Smart Continue can fetch/rank related candidates, preserve selected/visible result ordering and handle Next/Previous | `service/PlayerService.kt`, `intelligence/SmartQueueRanker.kt` |
+| Playback | Media3/ExoPlayer streaming, background service, media notification, queue persistence, reordering, seek/skip, sleep timer | `service/PlayerService.kt`, `ui/screens/player/` |
+| Immersive player | Expanded playback surface with artwork and animated controls, plus reduced-motion support | `ui/screens/player/ImmersivePlayerDialog.kt`, `ui/screens/settings/AppearanceSettings.kt` |
+| Artwork / browsing performance | Size-aware artwork requests, shared browse caches, time-bounded LRU policies and scroll-aware deferred artwork work; **not** a guarantee of zero jank | `ui/performance/HomeArtworkPolicy.kt`, `MusicBrowseCache.kt`, `ui/screens/home/MoodspaceScreen.kt` |
+| Local library | Favorites, local playlists, albums/artists, library reordering and playlist import entry points | `Database.kt`, `ui/screens/home/HomePlaylists.kt`, `ui/screens/localplaylist/` |
+| Spotify import | Public-playlist link import and track matching to catalog results, with review/unmatched-item handling; unofficial Spotify endpoints can change | `spotify/SpotifyImporter.kt`, `TrackMatcher.kt`, `ui/screens/spotify/SpotifyImportScreen.kt` |
+| Listening Insights / WEST Wrapped | Recorded listening sessions, trends, streaks, top tracks/artists/albums, calendar heatmap and shareable annual summary | `listening/` |
+| Lyrics | YouTube Music lyrics, KuGou synchronized lyrics where available, and manual edits | `ui/screens/player/Lyrics.kt`, `kugou/` |
+| Audio cache and offline | Configurable audio cache; offline playlist playback can use **fully cached** tracks. This is **not** a managed offline-download or permanent-download system | `service/PlayerService.kt`, `ui/screens/localplaylist/OfflinePlaylistAction.kt` |
+| UI settings | Light/dark/dynamic palettes, artwork shapes, animation/reduced-motion preferences, playback settings | `ui/styling/`, `ui/screens/settings/` |
+| Data portability | Local Room database backup and restore | `ui/screens/settings/DatabaseSettings.kt` |
+| Android TV / Auto | TV launcher declarations and a configurable media browser; not a claim of a TV-optimized interface or fully certified Android Auto experience | `AndroidManifest.xml`, `PlayerMediaBrowserService.kt` |
+| Telemetry | Aptabase-compatible anonymous events are initialized in source without an in-app opt-out | `utils/WestAnalytics.kt`, `MainApplication.kt` |
+| Accounts / permanent downloads | No account sign-in or managed permanent music download feature established by the current source | — |
 
-The old "listening history" list screen (recent plays with search and CSV export) that existed mid-revision was removed again in the final fix batch; the Insights dashboard's tabs are Overview / Songs / Artists / Albums / Calendar / Wrapped, with no History tab.
+**Scope warning:** Moodspace recommends music from chosen categories and taste signals; it does not infer actual emotions or perform acoustic mood classification. WEST Intelligence similarly uses local ranking heuristics rather than model training.
 
 ## 4. Screenshots
 
-Upstream-derived screenshots exist in `fastlane/metadata/android/en-US/images/phoneScreenshots/` (`1.jpg` to `6.jpg`). They are not embedded here because they may not reflect the current WEST UI — in particular none of them show the new Insights screens or the Spotify import dialog. The launcher logo is at `app/src/main/logo.png`.
+Existing `fastlane/metadata/android/en-US/images/phoneScreenshots/` screenshots originate from an older UI and should **not** be presented as proof of the current Home, Moodspace, onboarding or immersive-player design. Capture new device screenshots before publishing store or release marketing material.
+
+Current WEST logo/wordmark resources are in `app/src/main/res/drawable-nodpi/` (including light- and dark-theme variants); launcher assets live in `app/src/main/res/mipmap-*/`. The repository may also retain an older `app/src/main/logo.png` source image.
 
 ## 5. Technology stack
 
-Versions are taken from `settings.gradle.kts`, `build.gradle.kts` and module build files, and are unchanged from the previous revision.
+Versions are taken from the Gradle build files in this branch; some dependencies are legacy or prerelease. The wrapper currently uses the official `services.gradle.org` Gradle 7.4 distribution.
 
 | Layer | Technology | Version |
 | --- | --- | --- |
@@ -95,10 +100,15 @@ The three test-only dependencies are `testImplementation` scoped and are not pac
 
 A single-activity app. `MainActivity` hosts all Compose screens and binds to `PlayerService`, a foreground service that owns the `ExoPlayer`, `MediaSession` and the stream cache. UI state lives in composables, `SharedPreferences` and Room `Flow`s. There are no androidx ViewModels or repository classes in the main app: screens call the static `Database` DAO and the `Innertube` object directly. The one deliberate exception is `ListeningStatsViewModel` in the listening module — a plain state holder created with `remember` and torn down in a `DisposableEffect`, used because the Insights screen combines five data streams that should survive recomposition but not configuration-light rotation handling androidx would provide; it is not an `androidx.lifecycle.ViewModel`.
 
-Two new self-contained feature areas keep the core untouched:
+Representative feature areas include:
 
 - **`listening/`** (inside the `app` module, package `it.vfsfitvnm.vimusic.listening`) is layered as `tracker/` → `data/` → `domain/` → `presentation/` + `components/`. The tracker listens to the player; the data layer owns the Room entity/DAO/migration and a statistics calculator that is pure Kotlin (unit-testable on the JVM); the presentation layer renders six screens. It never modifies player configuration.
 - **`spotify/`** (package `it.vfsfitvnm.vimusic.spotify`) holds the importer and matcher as pure Kotlin (networking via `HttpURLConnection`, matching via the existing `Innertube.searchPage`), with `ui/screens/spotify/SpotifyImportScreen.kt` as the only UI surface.
+
+- **`intelligence/` and `personalization/`** implement taste profiles, heuristic recommendations, listening-based ranking and Hybrid Smart Queue scoring. The queue coordinator is integrated into the existing `PlayerService`, not a second playback service.
+- **`moodspace/`, `ui/screens/home/MoodspaceScreen.kt` and `innertube/requests/MoodExplore.kt`** compose a browse-category interface using live provider shelves with local fallback categories; `ui/performance/MusicBrowseCache.kt` caches responses and throttles artwork lookups.
+- **`voice/`** supplies speech-to-text **music search** through Android's recognition APIs and forwards normalized queries into the ordinary Search flow. It is distinct from the media browser's `onPlayFromSearch` integration.
+- **Home/UI performance helpers** (`ui/performance/`, `ui/screens/home/HomeShelfPolicy.kt`) reduce repeated provider requests and excessive artwork work during scrolling. Their tests exercise policies, not measured end-to-end frame-rate guarantees.
 
 ### Module dependencies
 
@@ -254,7 +264,7 @@ fastlane/metadata/            Store metadata, changelogs 9–20, screenshots
 .github/workflows/            android.yml (JDK 17, assembleDebug, APK artifact)
 ```
 
-Routes continue to be declared next to their screens: the eight base routes in `ui/screens/Routes.kt` are unchanged, and the two new routes are declared where they are hosted — `listeningStatsRoute` in `listening/presentation/ListeningInsightsScreen.kt` and `spotifyImportRoute` in `ui/screens/spotify/SpotifyImportScreen.kt`, both wired into `HomeScreen.kt`'s `RouteHandler`. The Insights dashboard is reachable from a dedicated "Insights" sidebar entry; the Spotify import is reachable from a tile on the Playlists tab. (An earlier revision exposed Insights via a trending icon button on Quick picks; that entry point was removed.)
+Routes are declared in `ui/screens/Routes.kt` and near feature screens. The current Home host shows **four bottom tabs (Home, Moodspace, Search, Library)**; the Library tab contains Playlists, Songs, Artists and Albums. `MoodspaceScreen` supplies category subpages within the Moodspace tab. `listeningStatsRoute` and `spotifyImportRoute` are wired into the Home route handler, with entry points from Home/Library. See `ui/screens/home/HomeScreen.kt` for the authoritative navigation wiring.
 
 ## 8. How it works
 
@@ -267,31 +277,38 @@ Routes continue to be declared next to their screens: the eight base routes in `
 7. **Spotify import.** `SpotifyImporter` validates the link, fetches the public Spotify embed page and parses its `__NEXT_DATA__` JSON for the playlist name, the first 100 tracks and an anonymous access token; longer playlists are paginated through Spotify's web-player persisted-query API at 100 tracks per page. Each track is searched on YouTube Music via `Innertube.searchPage`, scored by `TrackMatcher` (title core, version markers, artist, duration, album, explicit flag; hard gates on title and duration), and the playlist is written in a single transaction so it can never be half-created.
 8. Voice search ("play … on WEST") arrives at `PlayerMediaBrowserService` or the `PlayerService` session callback, whose `onPlayFromSearch` (new in this revision) plays the top 50 local search hits, or the 50 most-played songs for a blank query; with no results it simply resumes.
 
+9. **WEST Intelligence and onboarding.** `TasteProfileStore` persists optional artist/song/language/mood selections. `RecommendationRepository` combines those selections with local library and listening signals; the results are heuristic shelves, not externally trained predictions.
+10. **Moodspace.** The app draws cached or fallback categories immediately, then loads provider categories/shelves when reachable. Artwork prefetch is postponed during active list scrolling; category-specific search results can be personalized by stored tastes.
+11. **Hybrid Smart Queue.** Search playback initializes an ordered queue. When enabled, related-track discovery and ranking add candidates asynchronously; a user Next tap should not require manually reopening search.
+12. **Voice search.** The in-app microphone opens `VoiceSearchDialog` and submits recognized text as a normal Search query. This does not implement arbitrary spoken device commands.
+
 ## 9. Prerequisites
 
-- **JDK 17** — used by CI (`.github/workflows/android.yml`, Temurin 17) and verified for this revision's local build (JDK 17.0.21). Gradle 7.4 does not run on JDK 21 (which some machines now default to); use JDK 17 or older-17-compatible toolchains.
-- Android SDK with **platform 34** and **build-tools 34.0.0**. Both were installed with `sdkmanager` and exercised by the verified build.
-- Network access to Google Maven, Maven Central, JitPack, and the Gradle distribution host.
-- For the verified build the SDK location was provided in a git-ignored `local.properties` (`sdk.dir=...`); Gradle also honours `ANDROID_HOME` / `ANDROID_SDK_ROOT`.
+- **JDK 17** (used by `.github/workflows/android.yml`; older Gradle/AGP versions are not a JDK 21 upgrade target without additional work).
+- **Android SDK platform 34**, **build-tools 34.0.0**, and platform tools; emulator or physical device only when executing connected instrumentation tests.
+- Access to `services.gradle.org` for the wrapper and to Google Maven, Maven Central and JitPack for dependencies. The current wrapper URL is `https://services.gradle.org/distributions/gradle-7.4-bin.zip`.
+- An Android SDK location via git-ignored `local.properties` (`sdk.dir=...`) or `ANDROID_HOME` / `ANDROID_SDK_ROOT`.
+
+No paid service, Spotify account, or model-training infrastructure is required to build the source. External catalog endpoints remain subject to their providers' availability and terms.
 
 ## 10. Build and run
 
+Clone the repository or use an existing checkout. For this contribution branch:
+
 ```bash
-git clone https://github.com/iaaryans/WEST.git
+git clone https://github.com/adarsh01-cyber/WEST.git
 cd WEST
-./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
-./gradlew assembleRelease      # needs a release keystore, see below
+git switch west-e2e-update
+./gradlew --no-daemon -PwestPreview :app:testDebugUnitTest :innertube:test :kugou:test :app:lintDebug :app:assembleDebug
 ```
 
-CI runs `./gradlew assembleDebug` only and uploads `app-debug.apk` as a workflow artifact.
+Windows PowerShell equivalents use `.\gradlew.bat` instead of `./gradlew`. `-PwestPreview` produces the `.preview` application-ID suffix; omitting it uses the normal debug suffix. Find the compiled artifact(s) under `app/build/outputs/apk/debug/`. For a device connected through ADB, install the **actual output filename** reported by the build.
 
-**This revision's build was actually executed** with JDK 17.0.21, AGP 7.3.0, Gradle 7.4, SDK platform 34 and build-tools 34.0.0: `./gradlew assembleDebug` completed successfully and produced `app/build/outputs/apk/debug/app-debug.apk` (12,248,549 bytes, SHA-256 `f481eeea0c5de2f0ede7b062604e846a682054de101f34809e5c53a862db7ff2`; verified with `aapt2 dump badging` and `apksigner verify`). The unit test suite was also run (section 13).
+**Verified CI baseline (24 November 2026):** The pull-request workflow [WEST - Build and Verify APK, run 45452354244](https://github.com/iaaryans/WEST/actions/runs/45452354244) completed successfully for commit `0f12f3d`. It passed Android SDK setup, mandatory JVM regression tasks, Android lint, `app:assembleDebug`, APK signature/label/integrity and the workflow's size threshold (**greater than 25,000,000 bytes**), then uploaded a `WEST-Verified-Build` artifact containing the packaged APK and source archive. The GitHub run is evidence for **that commit and configuration**, not blanket runtime certification.
 
-The Gradle wrapper downloads Gradle 7.4 from a Tencent Cloud mirror (`gradle/wrapper/gradle-wrapper.properties`) with no checksum pin. If that host is unreachable, edit the URL locally. Note also that `gradle.properties` sets a single-use daemon fork (its `org.gradle.jvmargs` includes JDK 17 compiler `--add-exports`/`--add-opens` entries needed by kapt).
+**Instrumentation boundary:** `reactivecircus/android-emulator-runner` is **manual-only** (`workflow_dispatch`) because the hosted emulator timed out in a prior run. It was **skipped** in the successful PR run. To run instrumentation yourself, boot an Android emulator or connect a device and execute `./gradlew -PwestPreview :app:connectedDebugAndroidTest`; do not mark tests as passed without the resulting report.
 
-Install the debug APK with `adb install app/build/outputs/apk/debug/app-debug.apk`, or open the project in Android Studio and run the `app` configuration. Device installation and runtime testing were **not** performed for this revision (no device/emulator available in the build environment).
-
-Two environment notes from the verified build, in case they recur on your machine: (a) `repo.maven.apache.org` intermittently answered HTTP 429 while resolving dependencies — routing Maven Central through a mirror with a Gradle init script kept outside the repository (`--init-script`) worked around it, and every artifact resolved is identical content from Maven Central; (b) on a 4 GB RAM machine the Gradle daemon could be OOM-killed during `:app:minifyReleaseWithR8` at the default 2 GB heap — lowering `org.gradle.jvmargs` on the command line (`-D`) and running the Kotlin compiler in-process (`-Pkotlin.compiler.execution.strategy=in-process`) fixed it. Neither requires any change to the repository.
+The `assembleRelease` task may produce an **unsigned** APK without a configured signing key; it is not an automatically installable or published release. See section 11 for signing precautions. A large APK is only a packaging requirement, not a quality metric.
 
 ## 11. Configuration
 
@@ -300,9 +317,12 @@ Two environment notes from the verified build, in case they recur on your machin
 - **Listening statistics** (new): the play-count threshold lives in SharedPreferences under the key `listeningPlayCountThresholdMs` (15 s / 30 s / 60 s choices, default 30 s), editable from the Insights screen; a track counts as "played" when the threshold is reached, capped at half the track's duration. The tracker itself has no opt-out — it records whenever `PlayerService` runs.
 - **Runtime settings** (stored in `SharedPreferences`, keys in `utils/Preferences.kt`): theme, thumbnail roundness, cache sizes, loop modes, skip silence, normalization, persistent queue, Android Auto toggle, invincibility mode.
 
+- **Onboarding and intelligence:** artist/song/language/mood selections are persisted by `personalization/TasteProfile.kt`; recommendation preferences and feedback live under `intelligence/`. These are device-local preferences, not a remote learning model.
+- **Smart Continue and motion:** Smart Queue continuation can be toggled, and the UI contains reduced-motion and artwork/presentation settings. Exact keys and defaults are defined in the source; do not assume historical preference names are stable.
+
 ## 12. Permissions
 
-The permission list is unchanged in this revision:
+Key manifest permissions and their intended purposes:
 
 | Permission | Purpose |
 | --- | --- |
@@ -319,41 +339,45 @@ The permission list is unchanged in this revision:
 
 ## 13. Testing
 
-The previous revision had no meaningful test coverage; this revision ships a JVM unit test suite (no instrumented tests).
+Both JVM tests and Android instrumentation test sources are present. Their presence does **not** imply that every device or live-service flow has been tested.
 
-| Test class | Module | Covers |
+| Coverage area | Representative tests | Latest PR CI |
 | --- | --- | --- |
-| `SpotifyImporterTest` | app | Embed-page ID extraction and `__NEXT_DATA__` parsing (real `org.json`) |
-| `TrackMatcherTest` | app | Matching/scoring: artist, duration, version markers, edge cases |
-| `From23To24MigrationTest` | app | Executes the Room 23→24 migration SQL against real SQLite (sqlite-jdbc) |
-| `PlaybackSessionTest` | app | Session accumulation: speed scaling, seeks, threshold counting |
-| `ListeningStatsCalculatorTest` | app | Overview/trend/streaks/Wrapped calculations, incl. BUG-001 regression tests |
-| `DurationFormattingTest` | app | `formatListeningDuration` / `formatHours` output formats |
-| `WrappedCardPaletteTest` | app | WCAG contrast derivation for the Wrapped share card (BUG-002 fix) |
-| `MusicResponsiveListItemRendererMappingTest` | innertube | Structural row mapping (artists/album/duration extraction) |
+| Spotify import and track matching | `SpotifyImporterTest`, `TrackMatcherTest` | JVM test tasks passed |
+| Listening statistics, migration and Wrapped | `From23To24MigrationTest`, `PlaybackSessionTest`, `ListeningStatsCalculatorTest`, `WrappedCardPaletteTest` | JVM test tasks passed |
+| WEST Intelligence and Hybrid Smart Queue ranking | `RecommendationEngineTest`, `SmartQueueRankerTest` | JVM test tasks passed |
+| Moodspace and timed mixes | `MoodspaceCatalogTest`, `MoodspaceSafetyTest`, `MoodMixEngineTest`, `TimedMixTest`, `MoodExploreParserTest` | JVM test tasks passed |
+| Search submission, discovery and history bounds | `SearchSubmissionTest`, `DiscoveryTest`, `HistoryBoundsTest` | JVM test tasks passed |
+| Browse performance and artwork policies | `HomeArtworkPolicyTest`, `TimedLruCacheTest`, `HomeShelfPolicyTest`, `MoodArtworkPrefetchPolicyTest` | JVM test tasks passed |
+| Search navigation / crash regression | `app/src/androidTest/.../SearchNavigationTest.kt` | Source present; **not executed** in successful PR CI |
+| Hybrid playback / Home scroll smoke tests | `HybridSmartQueuePlaybackTest`, `FrameTimingScrollSmokeTest`, `HomeMoodspaceScrollRegressionTest` | Source present; **not executed** in successful PR CI |
 
-The old empty placeholder tests (`innertube/src/test/kotlin/Test.kt`, `kugou/src/test/kotlin/Test.kt`) still exist. Run everything with `./gradlew test`; running `:app:testDebugUnitTest :innertube:test :kugou:test` (the debug variant), all **113 tests passed with 0 failures and 0 errors** (103 in `app`, 9 in `innertube`, 1 in `kugou`; 111 of them belong to the eight classes above). CI still builds only (`assembleDebug`) and does not run the test suite.
+On 24 November 2026, [run 45452354244](https://github.com/iaaryans/WEST/actions/runs/45452354244) finished successfully: `:app:testDebugUnitTest`, `:innertube:test`, `:kugou:test`, lint, APK compilation, verification and artifact upload passed. The workflow's emulator step is explicitly restricted to manual dispatch and was skipped on the pull request. Older counts such as “113 tests” in historical revision notes are not a current exhaustive total.
+
+Suggested local check:
+
+```bash
+./gradlew --no-daemon -PwestPreview :app:testDebugUnitTest :innertube:test :kugou:test :app:lintDebug :app:assembleDebug
+```
+
+For live playback, UI smoothness, search/queue navigation and crash regressions, supplement unit tests with a real device or a working emulator and publish the test conditions and results. **No 60 FPS, no-crash or full-E2E guarantee is claimed.**
 
 ## 14. Release and deployment
 
-Release builds enable R8 minification and resource shrinking (`app/build.gradle.kts`, `app/proguard-rules.pro`) and the build can emit a universal APK. Distribution is manual through GitHub Releases; no store publishing is configured.
+The source still declares `versionName 0.5.4` / `versionCode 20`. The historical `West-v0.5.4-beta.apk` and its checksums belong to an earlier distributed debug beta, **not** the current `west-e2e-update` build.
 
-The current release is **v0.5.4** (`versionName 0.5.4`, `versionCode 20`), published as a **debug-build beta**:
-
-| Property | Value |
+| Distribution channel | Current status |
 | --- | --- |
-| File | `West-v0.5.4-beta.apk` |
-| Size | 11,785,120 bytes (about 11.8 MB) |
-| SHA-256 | `98e4a8170a5d008953c65961782a46331e8f606ecf787183dc95bf07cee850c2` |
-| Package | `it.vfsfitvnm.vimusic.debug` |
-| Build type | Debug: `debuggable=true`, not minified, signed with the Android debug certificate |
-| minSdk / targetSdk | 21 / 34 |
+| GitHub Actions pull-request run | [Verified run 45452354244](https://github.com/iaaryans/WEST/actions/runs/45452354244), commit `0f12f3d` |
+| CI build artifact | `WEST-Verified-Build`; includes packaged `WEST.apk` and source archive, subject to GitHub artifact retention |
+| CI package validation | Integrity, APK signature, WEST application label and **size >25,000,000 bytes** passed on that run |
+| Instrumentation tests | Skipped on normal PR checks; manual workflow only |
+| Public release / Play Store | No newly published production release is established by CI success |
+| Release signing | Requires a properly configured keystore; unsigned release outputs are not installable as production releases |
 
-The table above describes the previously published beta APK, not this revision's build; the freshly built APK from the final source is delivered alongside this README as `WEST.apk` — a debug build of 12,248,549 bytes (≈ 12.2 MB), SHA-256 `f481eeea0c5de2f0ede7b062604e846a682054de101f34809e5c53a862db7ff2`, package `it.vfsfitvnm.vimusic.debug`, `versionName 0.5.4` / `versionCode 20`.
+The `-PwestPreview` debug variant uses `it.vfsfitvnm.vimusic.preview`, which is separate from the older `.debug` beta and from the inherited release ID. These package variants do not automatically share application data. Back up/restore the library using the application's settings when migrating if supported and compatible.
 
-A release build (`./gradlew assembleRelease`) was also run for this revision and completed successfully, producing a minified `app-release-unsigned.apk` (2,873,482 bytes) with the release package ID `it.vfsfitvnm.vimusic`. It is unsigned because no `release.keystore` was provided in the repository root, so it cannot be installed as-is. The installable `WEST.apk` deliverable is therefore the debug build, matching how the v0.5.4 beta was distributed.
-
-Because the package ID has the `.debug` suffix, the beta installs as a separate app and can coexist with ViMusic. A future release-signed build (`it.vfsfitvnm.vimusic`) will be a different app with its own data; use Settings > Database to back up and restore your library. Android will ask you to allow installs from your browser or file manager.
+**Historical beta reference (not the current CI artifact):** `West-v0.5.4-beta.apk` was documented at 11,785,120 bytes and SHA-256 `98e4a8170a5d008953c65961782a46331e8f606ecf787183dc95bf07cee850c2`. Retained only to identify the earlier release, not to describe the new APK.
 
 ## 15. Security and privacy
 
@@ -366,15 +390,17 @@ Because the package ID has the `.debug` suffix, the beta installs as a separate 
 
 ## 16. Current limitations
 
-- Playback relies on impersonating YouTube VisionOS and Android VR clients with hard-coded versions; changes on YouTube's side can break it without notice.
-- Toolchain and libraries are old, and several are pre-release (see section 5).
-- Unit tests exist but are narrow (parsing, matching, statistics, migration); there are no instrumented/UI tests, and CI does not run the suite.
-- Large classes such as `PlayerService.kt` (1,068 lines) and `Database.kt` (689 lines).
-- The Kotlin package and release application ID still use the upstream name (`it.vfsfitvnm.vimusic`). A future release-signed build cannot be installed over a ViMusic build signed with another key. The current debug beta uses the `.debug` suffix and does not have this conflict.
-- The distributed beta APK is a debug build: larger, unoptimized, debuggable, and signed with the Android debug key.
-- **Listening statistics:** sessions of five seconds or less are discarded; crash recovery is bounded by the 15-second heartbeat; artist and album rankings depend on the song's library metadata — plays of songs without artist/album maps are counted in totals but excluded from those rankings and reported separately as "unmapped" plays; the tracker has no opt-out.
-- **Spotify import:** public playlists only (no OAuth); parsing depends on Spotify's undocumented embed-page JSON and a hard-coded pathfinder query hash — if Spotify changes them, pagination can silently fall back to the first 100 tracks; unmatched tracks are reported but imported playlists may contain first-search-result fallbacks (documented BitChord behaviour); tracks resolving to the same video are deduplicated by first occurrence.
-- Unofficial client; not affiliated with or endorsed by YouTube, Google or Spotify.
+- **Device-level verification is incomplete.** The successful PR workflow passes JVM tests, Android lint, APK compilation and packaging, but skips emulator instrumentation. Search/queue behavior, UI frame pacing and stability across devices still require connected tests and measured traces.
+- **No absolute smoothness claim.** Scroll-aware caching, artwork sizing and deferred prefetch are implemented, but “zero lag,” “always 60 FPS,” or exact parity with another app is not established by source review or a green build.
+- **External service fragility.** Unofficial YouTube Music playback/discovery clients and Spotify public-playlist parsing depend on undocumented behavior and may break when upstream services change. Spotify import does not include private playlist OAuth.
+- **Heuristic personalization only.** Intelligence uses local preference/listening/feedback signals, not a remote LLM, trained recommender, emotional-state detection or audio-mood classifier.
+- **Offline scope.** A cache and playback of completely cached tracks are provided, not a managed permanent offline-download system. Initial online Moodspace categories, artwork and recommendations require network access.
+- **Older platform dependencies.** The project uses AGP 7.3.0, Gradle 7.4 and several prerelease libraries; upgrades require regression testing.
+- **Application identity.** The inherited `it.vfsfitvnm.vimusic` package cannot be treated as a distinct release identity without considering signatures, installed variants and data migration.
+- **UI surfaces.** Android TV manifest support and Android Auto media-service integration do not mean fully optimized or certified TV/vehicle experiences.
+- **Listening / telemetry privacy.** Listening history and telemetry behavior require deliberate privacy review; the source documents no in-app opt-out for existing anonymous Aptabase events.
+- **Release safety.** Existing signing-credential fallbacks in `app/build.gradle.kts` should be removed before any production distribution. Never commit keystores or production secrets.
+- Unofficial application: WEST is not affiliated with or endorsed by YouTube, Google or Spotify.
 
 ## 17. Contributing
 
@@ -382,7 +408,7 @@ Because the package ID has the `.debug` suffix, the beta installs as a separate 
 2. Keep changes focused and state the device and Android version you tested on.
 3. Open a pull request. Contributions are accepted under GPL-3.0.
 
-Bug reports use the template in `.github/ISSUE_TEMPLATE/bug_report.yaml`. If you touch the listening module or the Spotify matcher, run `./gradlew test` — the new unit suites cover exactly those areas.
+Bug reports use `.github/ISSUE_TEMPLATE/bug_report.yaml`. Contributors should run the mandatory JVM tests, lint and debug build, and include emulator/device evidence when changing navigation, playback, UI smoothness or crash-sensitive flows. Do not report instrumentation tests as passing when they were skipped.
 
 ## 18. License
 
@@ -391,10 +417,13 @@ GPL-3.0, see [`LICENSE`](./LICENSE). WEST contains code by vfsfitvnm and ViMusic
 ## 19. Acknowledgements
 
 - [ViMusic](https://github.com/vfsfitvnm/ViMusic) by vfsfitvnm and contributors, the basis of this project.
-- [BitChord](https://github.com/sunilpaulmathew/BitChord), from which the Spotify playlist import was ported (matching rules unchanged).
+- Spotify playlist import and matching implementation (existing behaviour retained).
+- Home and Moodspace visual inspirations/adaptations are accompanied by source-attribution notes in `HOME-EXPLORE-ATTRIBUTION.txt` and `MOODSPACE-EXPLORE-ATTRIBUTION.txt`; preserve applicable GPL notices and copyright credits.
 - Libraries listed in section 5.
 
 ## 20. Revision notes — what changed since the previous README
+
+> **Historical change log.** This section records work leading to the earlier beta/source revisions and retains its original sequencing. It is not the current feature inventory or test report; use sections 2–3 and 10–14 for the source and CI status as of 24 November 2026.
 
 The previous README documented the baseline source. This revision's source tree adds two feature commits and a fix batch; everything below was verified against that final source.
 
@@ -403,7 +432,7 @@ The previous README documented the baseline source. This revision's source tree 
 | Change | Where |
 | --- | --- |
 | **Listening statistics module** (isolated): tracker, Room table + 23→24 migration with legacy-data backfill, statistics calculator, repository, Insights dashboard (Overview / Songs / Artists / Albums / Calendar / Wrapped), calendar heatmap, top-10/20/50 rankings with play-from-rank, WEST Wrapped annual summary with 9:16 PNG share card via FileProvider | `listening/` (23 files), `Database.kt` (version 24), `AndroidManifest.xml`, `res/xml/file_paths.xml` |
-| **Spotify playlist import** (ported from BitChord): public-playlist embed-page fetch, pathfinder pagination past 100 tracks, score-based YouTube Music matching, transactional playlist creation, unmatched-track summary, language filter | `spotify/SpotifyImporter.kt`, `spotify/TrackMatcher.kt`, `ui/screens/spotify/SpotifyImportScreen.kt`, `res/drawable/spotify_logo.xml` |
+| **Spotify playlist import** : public-playlist embed-page fetch, pathfinder pagination past 100 tracks, score-based YouTube Music matching, transactional playlist creation, unmatched-track summary, language filter | `spotify/SpotifyImporter.kt`, `spotify/TrackMatcher.kt`, `ui/screens/spotify/SpotifyImportScreen.kt`, `res/drawable/spotify_logo.xml` |
 | Voice search via `onPlayFromSearch` in both the player service and the media browser service (local library; blank query = 50 most-played songs) | `service/PlayerService.kt`, `service/PlayerMediaBrowserService.kt`, `AndroidManifest.xml` |
 | Android TV declarations: `LEANBACK_LAUNCHER` launcher category, optional `touchscreen`/`leanback` features, TV banner already present | `AndroidManifest.xml` |
 | "Insights" sidebar entry (new home navigation item); "Import from Spotify" tile on the Playlists tab with a Spotify logo drawable | `ui/screens/home/HomeScreen.kt`, `ui/screens/home/HomePlaylists.kt` |
@@ -433,3 +462,50 @@ The previous README documented the baseline source. This revision's source tree 
 
 - This README is a continuation of the previous one: structure, numbering, terminology and the identity/history notes above are preserved; sections 2–8, 9–13 and 15–16 were updated against the final source; the two new data-flow diagrams were added; the dead `TECHNICAL_AUDIT.md` references were replaced with inline notes (the file is no longer in the repository).
 - Version, application ID, toolchain and permission facts were re-verified against the source; the debug APK and unit tests were actually built/run for this revision (sections 10, 13, 14).
+
+
+**Historical appendices.** The dated 22 November entries below preserve their original development context. Status statements about unavailable SDKs, unbuilt APKs, missing Git remotes, test counts, and the then-current ZIP are **archival**, not the status of this GitHub branch on 24 November. The successful CI run and its instrumentation-test exception are documented above.
+
+**Archived WEST source addendum (22 November 2026; historical snapshot).** The preceding numbered sections and their original content are retained for historical context. Some statements above describe an earlier beta rather than the source and workflow in this archive; the facts below supersede those older statements when they conflict.
+
+| Current property | Verified in this source archive |
+| --- | --- |
+| Project branding | Gradle root project is `WEST` (`settings.gradle.kts`), not the historical `ViMusic` name. The upstream Kotlin package and base application ID remain `it.vfsfitvnm.vimusic`. |
+| Developers and repository profile | WEST credits Aaryan and Adarsh. Adarsh's GitHub profile is [adarsh01-cyber](https://github.com/adarsh01-cyber). A GitHub remote is **not** configured in the bundled local Git repository; set it to your chosen WEST repository before pushing. |
+| Maintained navigation | Home → Moodspace → Search → Library; the Library contains playlists, songs, artists and albums. |
+| WEST Intelligence | On-device heuristic recommendations, discovery slider, feedback actions (`More like this` / `Less`), and feedback reset. This is **not** a cloud-hosted LLM or a trained predictive model. |
+| Moodspace | Dedicated bottom tab (Home → Moodspace → Search → Library); selectable mood cards (Happy, Sad, Chill, Focus, Workout, Relax, Sleep, Night Drive, Travel, Energetic, Melancholy, Custom); preloaded online mood-query recommendations **before any songs are added**; optional WEST Intelligence personalization based on the user's real listening, favorites and feedback; local recommendations and artist-based related tracks after song addition; search/add/play/save timed mixes. Recommendations refresh when the preferred artist changes or when Remix is tapped. This does **not** detect the listener's emotional state or analyze audio mood; an internet connection is required for initial online mood discovery. |
+| Timed Mix | Create approximately time-bounded mixes using library songs, optionally with a selected ending and remix action. |
+| Search extensions | Local and online results, smart filtering, pinned and recent queries, listening-time/history search, microphone-based query input, and search-submit handling. On-device search regression tests cover history selection and keyboard Search. |
+| Player experience | Immersive player, animated song/artwork/control transitions, queue persistence and restoration code, and a reduced-motion setting. |
+| Import and statistics | Spotify public-playlist import with candidate review controls; listening Insights, WEST Wrapped summary, and shareable presentation. |
+| GitHub Actions workflow | JVM tests, Android lint, debug APK, integrity/signature/label and **size greater than 25,000,000 bytes** are mandatory in normal PR CI. Emulator instrumentation is **manual-dispatch only** in the current workflow; it was skipped in the successful 24 November run. |
+| Historical ZIP binary | An earlier ZIP carried `apk/WEST-Final.apk`; this does **not** describe the GitHub checkout. Build and release artifacts are delivered by the current CI workflow; Git ignores `*.apk`. |
+| Source hygiene | `README.md` is the primary project guide; additional attribution and validation documentation can exist in source. Preserve copyright attributions, and keep `gradlew` executable on Unix. |
+
+**Current build handoff:** Use JDK 17, Android SDK Platform 34 and `./gradlew --no-daemon -PwestPreview :app:testDebugUnitTest :innertube:test :kugou:test :app:lintDebug :app:assembleDebug`. The `.preview` suffix is used for preview builds. PR CI ran successfully on 24 November; run `:app:connectedDebugAndroidTest` separately on an emulator or device and inspect its result before making full-E2E claims. Size >25 MB is a packaging threshold, not proof of quality.
+
+**Remaining cautions:** This README's earlier release-size tables, test counts, feature descriptions, and original repository naming are historical. The bundled source still has upstream application ID and legacy toolchain constraints, as well as signing fallback credentials in `app/build.gradle.kts`. Do not publish a real release signing key, password, or keystore in Git; review signing configuration and privacy settings before production distribution. Fastlane screenshots in `fastlane/metadata/` may be outdated and should be replaced with captures of the actual WEST UI before store submission.
+
+
+**WEST Intelligence 2.0 — first-launch taste onboarding (22 November 2026; additive update).** The numbered README sections above remain unchanged. This source includes a new full-screen first-launch flow with optional Skip: languages → searchable artist picker with visible popular circular artist cards and live catalog artwork → optional favorite songs → Moodspace preferences → confirmation. Popular artists are a short initial seed, not a claim that every musician is hardcoded; search uses the existing InnerTube artist endpoint. Artist photos are fetched from the service and rendered via Coil; when unavailable, a music-note fallback is shown.
+
+| New capability | Source implementation |
+| --- | --- |
+| First-launch gating and reopen from Settings → Privacy & history | `MainActivity.kt`, `ui/screens/settings/OtherSettings.kt` |
+| Taste choices saved privately to local SharedPreferences; reset and Skip supported | `personalization/TasteProfile.kt` |
+| Popular artist photo cards and live search, optional song search | `personalization/PersonalizationOnboardingScreen.kt`, `personalization/ArtistCatalog.kt` |
+| Cold-start recommendations on Home from chosen artists/languages/songs and personalized Moodspace discovery | `ui/screens/home/TasteDiscoverySection.kt`, `ui/screens/home/QuickPicks.kt`, `ui/screens/home/MoodspaceScreen.kt` |
+| Library ranking seeded from explicitly selected songs/artists; continues learning from real listening and favorites | `intelligence/RecommendationEngine.kt`, `intelligence/RecommendationRepository.kt` |
+| Ranking regression tests for onboarding artist/song preferences | `app/src/test/kotlin/it/vfsfitvnm/vimusic/intelligence/RecommendationEngineTest.kt` |
+
+**Historical local validation:** this onboarding change was initially inspected without a working Android SDK. **Later status:** [GitHub Actions run 45452354244](https://github.com/iaaryans/WEST/actions/runs/45452354244) successfully built and packaged commit `0f12f3d` after JVM tests and lint; emulator instrumentation was skipped, so real-device functionality is not certified. New artist/song discovery needs internet access and a working upstream music catalog; this is not a trained LLM and does not infer real emotional state or acoustic mood.
+
+**WEST Hybrid Smart Queue 1.0 (22 November 2026; additive update, original README sections preserved).** Search playback no longer intentionally begins as an isolated track when other loaded results are available. Tapping a song in normal Search results, saved search previews, online previews, local Search, intelligent Search, or listening-history Search now creates a bounded queue beginning with the chosen song, then later search results. The pre-existing queue editor, player, scrubbing controls, and MediaSession remain in place; there is no second audio player.
+
+- `service/PlayerService.kt`: `Binder.playSmartQueue` builds the initial queue synchronously; related-track discovery runs asynchronously, uses generation checks to discard stale requests, deduplicates loaded tracks, and refills only when the active queue is near its end. `skipToNextOrDiscover` honors a Next tap made before a single-song queue's recommendations have arrived (one pending skip per generation). Next actions from the main player, controls, immersive view, notification and media browser route through the same coordinator.
+- `intelligence/SmartQueueRanker.kt`: deterministic, testable hybrid queue policy. The already-loaded search results stay in user-facing order; **only auto-discovered radio candidates** are re-ranked using selected artists/songs, favorites, recorded listening, recent-play penalties, More/Less feedback, and the existing discovery preference. No fabricated audio mood or new subscription/server is implied. A music-provider response and network connection are still needed to discover online suggestions.
+- `utils/Player.kt`: a lone item is no longer restarted when the user presses Next; normal queue navigation and explicit repeat behavior remain. UI queue options expose **Smart Continue: on/off**, persisted under `westSmartContinueEnabled`. The Up Next panel shows a loading explanation while songs are being fetched.
+- `app/src/test/.../intelligence/SmartQueueRankerTest.kt`: pure ranking, ordering, deduplication, personalization, and edge-case regression tests. `app/src/androidTest/.../service/HybridSmartQueuePlaybackTest.kt`: Media3 one-song/multiple-song Next/Previous checks. Existing Search navigation instrumentation now bypasses the unrelated first-run onboarding screen when checking history and keyboard-search crash regressions.
+
+**Validation boundary:** The pure Kotlin queue policy compiled and its 12 standalone assertions passed. At the time of this dated note, a local environment could not download Gradle and did not have an Android SDK, so that isolated check could not compile the app. **Later status:** GitHub Actions passed the JVM suite, lint, APK build and packaging on 24 November (run 45452354244); instrumentation was skipped on PR CI, and connected-device runtime validation remains unconfirmed. Run `.github/workflows/android.yml` in a connected CI environment and examine all failures before publishing an APK. This source ZIP intentionally contains **no APK**. The former README structure and existing files are retained.

@@ -114,7 +114,7 @@ interface Database {
     @RewriteQueriesToDropUnusedColumns
     fun favorites(): Flow<List<Song>>
 
-    @Query("SELECT * FROM QueuedMediaItem")
+    @Query("SELECT * FROM QueuedMediaItem ORDER BY id")
     fun queue(): List<QueuedMediaItem>
 
     @Query("DELETE FROM QueuedMediaItem")
@@ -122,6 +122,14 @@ interface Database {
 
     @Query("SELECT * FROM SearchQuery WHERE query LIKE :query ORDER BY id DESC")
     fun queries(query: String): Flow<List<SearchQuery>>
+
+    @Query("""SELECT s.id AS id, s.title AS title, COALESCE(s.artistsText,'') AS artist, 'Songs' AS kind,
+    COALESCE(s.durationText,'') AS duration, s.totalPlayTimeMs AS listened, f.contentLength AS length,
+    COALESCE(ly.fixed,'') || ' ' || COALESCE(ly.synced,'') AS lyrics FROM Song s LEFT JOIN Format f ON f.songId=s.id LEFT JOIN Lyrics ly ON ly.songId=s.id
+    UNION ALL SELECT id, name, name, 'Artists', '', 0, NULL, '' FROM Artist WHERE name IS NOT NULL
+    UNION ALL SELECT CAST(id AS TEXT), name, '', 'Playlists', '', 0, NULL, '' FROM Playlist
+    UNION ALL SELECT CAST(id AS TEXT), query, '', 'History', '', 0, NULL, '' FROM SearchQuery""")
+    fun discoveryRows(): Flow<List<it.vfsfitvnm.vimusic.ui.screens.search.DiscoveryRow>>
 
     @Query("SELECT COUNT (*) FROM SearchQuery")
     fun queriesCount(): Flow<Int>
@@ -280,6 +288,9 @@ interface Database {
     @Query("SELECT * FROM Format WHERE songId = :songId")
     fun format(songId: String): Flow<Format?>
 
+    @Query("SELECT contentLength FROM Format WHERE songId = :songId")
+    fun knownContentLength(songId: String): Long?
+
     @Transaction
     @Query("SELECT Song.*, contentLength FROM Song JOIN Format ON id = songId WHERE contentLength IS NOT NULL AND totalPlayTimeMs > 0 ORDER BY Song.ROWID DESC")
     fun songsWithContentLength(): Flow<List<SongWithContentLength>>
@@ -304,6 +315,25 @@ interface Database {
     @Query("SELECT loudnessDb FROM Format WHERE songId = :songId")
     fun loudnessDb(songId: String): Flow<Float?>
 
+    @Query("SELECT EXISTS(SELECT 1 FROM Song) OR EXISTS(SELECT 1 FROM Playlist)")
+    fun hasLibraryContent(): Flow<Boolean>
+
+    /** Bounded ranked candidate pool for WEST Intelligence; no new Room schema. */
+    @Query("SELECT * FROM Song WHERE likedAt IS NOT NULL OR totalPlayTimeMs > 0 OR id IN (SELECT songId FROM SongPlaylistMap) ORDER BY (likedAt IS NOT NULL) DESC, totalPlayTimeMs DESC, id LIMIT 1500")
+    fun intelligenceLibrary(): Flow<List<Song>>
+
+    @Query("SELECT * FROM Song WHERE likedAt IS NOT NULL OR totalPlayTimeMs > 0 OR id IN (SELECT songId FROM SongPlaylistMap) ORDER BY title, id")
+    fun mixLibrary(): Flow<List<Song>>
+
+    @Query("SELECT Song.*, h.id AS sessionId, h.timestamp AS started FROM ListeningHistory h JOIN Song ON Song.id = h.songId WHERE h.timestamp >= :start AND h.timestamp < :end AND h.playedMs > 0 ORDER BY h.timestamp, h.id")
+    fun heardBetween(start: Long, end: Long): Flow<List<HeardTrack>>
+
+    @Query("SELECT Song.*, Format.contentLength FROM SongPlaylistMap m JOIN Song ON Song.id = m.songId LEFT JOIN Format ON Format.songId = Song.id WHERE m.playlistId = :playlist ORDER BY m.position")
+    fun playlistForOfflineCheck(playlist: Long): Flow<List<SongWithContentLength>>
+
+    @Query("SELECT Song.*, Format.contentLength FROM Song LEFT JOIN Format ON Song.id = Format.songId WHERE title LIKE :query OR artistsText LIKE :query ORDER BY totalPlayTimeMs DESC, title LIMIT 8")
+    fun searchPreview(query: String): Flow<List<SongWithContentLength>>
+
     @Query("SELECT * FROM Song WHERE title LIKE :query OR artistsText LIKE :query")
     fun search(query: String): Flow<List<Song>>
 
@@ -317,6 +347,9 @@ interface Database {
     @Query("SELECT Song.* FROM Event JOIN Song ON Song.id = songId GROUP BY songId ORDER BY SUM(CAST(playTime AS REAL) / (((:now - timestamp) / 86400000) + 1)) DESC LIMIT 1")
     @RewriteQueriesToDropUnusedColumns
     fun trending(now: Long = System.currentTimeMillis()): Flow<Song?>
+
+    @Query("SELECT Song.* FROM Song JOIN (SELECT songId, MAX(timestamp) AS lastPlayed FROM Event GROUP BY songId) AS history ON history.songId = Song.id ORDER BY history.lastPlayed DESC, Song.id LIMIT 4")
+    fun recentlyPlayed(): Flow<List<Song>>
 
     @Query("SELECT COUNT (*) FROM Event")
     fun eventsCount(): Flow<Int>
@@ -687,3 +720,5 @@ fun transaction(block: () -> Unit) = with(DatabaseInitializer.Instance) {
 
 val RoomDatabase.path: String?
     get() = openHelper.writableDatabase.path
+
+data class HeardTrack(@androidx.room.Embedded val song: Song, val sessionId: Long, val started: Long)

@@ -63,7 +63,6 @@ import it.vfsfitvnm.vimusic.utils.songSortOrderKey
 @ExperimentalAnimationApi
 @Composable
 fun HomeSongs(
-    onSearchClick: () -> Unit
 ) {
     val (colorPalette, typography, thumbnailShape) = LocalAppearance.current
     val binder = LocalPlayerServiceBinder.current
@@ -187,8 +186,6 @@ fun HomeSongs(
 
         FloatingActionsContainerWithScrollToTop(
             lazyListState = lazyListState,
-            iconId = R.drawable.search,
-            onClick = onSearchClick
         )
     }
 }

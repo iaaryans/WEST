@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Imports a public Spotify playlist by link, matching each track on YouTube
- * Music. Ported from BitChord's SpotifyImporter; the URL parsing, the embed
+ * Music. Developed for WEST's Spotify import; the URL parsing, the embed
  * endpoint it reads public playlists from, the pagination past the embed
  * page's first hundred tracks, the language preference and the matching rules
  * are unchanged.
@@ -239,17 +239,14 @@ object SpotifyImporter {
      * own Innertube search. Optionally filters or prioritizes matches by
      * specified [language]. Reports real-time progress via [onProgress].
      *
-     * A track resolves only when the ported [TrackMatcher] accepts a
-     * candidate; a search that returns nothing usable leaves the track
-     * unmatched rather than guessing. The first search hit is the last
-     * resort, exactly as in BitChord, and a video already matched once is not
-     * inserted into the playlist a second time.
+     * Return rejected search candidates for explicit review.
      */
     suspend fun resolveToSongs(
         tracks: List<SpotifyImportTrack>,
         language: String? = null,
+        preferred: (SpotifyImportTrack) -> String? = { null },
         onProgress: (completed: Int, total: Int) -> Unit,
-    ): Pair<List<Innertube.SongItem>, List<SpotifyImportTrack>> = coroutineScope {
+    ): List<SpotifyMatch> = coroutineScope {
         val total = tracks.size
         val completedCount = AtomicInteger(0)
         val semaphore = Semaphore(4) // Bounded concurrency for search queries
@@ -275,16 +272,9 @@ object SpotifyImporter {
                     )?.getOrNull()
                     val candidates = searchResult?.items.orEmpty()
 
-                    val target = TrackMatcher.Target(
-                        title = track.title,
-                        artist = track.artist,
-                    )
-                    val bestMatch = TrackMatcher.best(candidates.map { it.toMatchableTrack() }, target)
-                        ?: candidates.firstOrNull()?.toMatchableTrack()
-
-                    val matchedCandidate = if (cleanLang != null && candidates.isNotEmpty()) {
+                    val eligible = if (cleanLang != null) {
                         val conflictingLangs = knownLanguages.filter { !it.equals(cleanLang, ignoreCase = true) }
-                        val nonConflictingCandidates = candidates.filter { candidate ->
+                        candidates.filter { candidate ->
                             val meta = buildString {
                                 append(candidate.info?.name.orEmpty())
                                 append(' ')
@@ -297,39 +287,28 @@ object SpotifyImporter {
                                 meta.contains("${it.lowercase()} version") ||
                                 meta.contains("${it.lowercase()} song")
                             }
-                        }.map { it.toMatchableTrack() }
-                        TrackMatcher.best(nonConflictingCandidates, target)
-                            ?: nonConflictingCandidates.firstOrNull()
-                            ?: bestMatch
-                    } else {
-                        bestMatch
-                    }
-
-                    val done = completedCount.incrementAndGet()
-                    onProgress(done, total)
-
-                    if (matchedCandidate != null) {
-                        val songItem = candidates.firstOrNull { it.key == matchedCandidate.videoId }
-                        if (songItem != null) Pair(songItem, null) else Pair(null, track)
-                    } else {
-                        Pair(null, track)
-                    }
+                        }
+                    } else candidates
+                    withContext(Dispatchers.Main) { onProgress(completedCount.incrementAndGet(), total) }
+                    reviewMatch(track, eligible, candidates, preferred(track))
                 }
             }
         }
+        deferredResults.awaitAll()
+    }
 
-        val results = deferredResults.awaitAll()
-        // distinctBy keeps the first occurrence, which is the first Spotify
-        // track in playlist order that resolved to the video; a later
-        // duplicate resolving to the same video is not added to the playlist
-        // again and is not reported as unmatched either — the song it wanted
-        // is in the playlist.
-        val songs = results.mapNotNull { it.first }.distinctBy { it.key }
-        val unmatched = results
-            .filter { it.first == null && it.second != null }
-            .mapNotNull { it.second }
-
-        Pair(songs, unmatched)
+    internal fun reviewMatch(track: SpotifyImportTrack, eligible: List<Innertube.SongItem>,
+                             candidates: List<Innertube.SongItem>, preferredId: String? = null): SpotifyMatch {
+        if (preferredId != null) {
+            val chosen = candidates.firstOrNull { it.key == preferredId }
+            return SpotifyMatch(track, chosen, if (chosen == null) candidates.distinctBy { it.key }.take(4) else emptyList())
+        }
+        val ranked = TrackMatcher.best(eligible.map { it.toMatchableTrack() },
+            TrackMatcher.Target(title = track.title, artist = track.artist))
+        val selected = eligible.firstOrNull {
+            it.key == ranked?.videoId && TrackMatcher.sharesArtist(track.artist, it.toMatchableTrack().artist)
+        }
+        return SpotifyMatch(track, selected, if (selected == null) candidates.distinctBy { it.key }.take(4) else emptyList())
     }
 
     // ── Transport ───────────────────────────────────────────────────────────
@@ -354,7 +333,7 @@ object SpotifyImporter {
 
     // ── org.json null-safety ────────────────────────────────────────────────
     // optString/optJSONObject return ""/null for JSON null too, but the
-    // Spotify payload also carries genuine empty strings where BitChord's
+    // Spotify payload also carries genuine empty strings where the previous implementation's
     // kotlinx parser saw null; these helpers keep the null-shaped logic.
 
     private fun JSONObject.optStringOrNull(key: String): String? =
@@ -389,4 +368,12 @@ internal fun Innertube.SongItem.toMatchableTrack() = MatchableTrack(
     artist = authors?.joinToString(", ") { it.name.orEmpty() }.orEmpty(),
     albumName = album?.name,
     durationText = durationText,
+)
+
+
+data class SpotifyMatch(
+    val track: SpotifyImportTrack,
+    val selected: Innertube.SongItem?,
+    val candidates: List<Innertube.SongItem>,
+    val skipped: Boolean = false
 )

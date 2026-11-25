@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 import it.vfsfitvnm.vimusic.ui.styling.Dimensions
 import it.vfsfitvnm.vimusic.ui.styling.LocalAppearance
 import it.vfsfitvnm.vimusic.ui.styling.shimmer
-import it.vfsfitvnm.vimusic.utils.medium
+import it.vfsfitvnm.vimusic.utils.bold
 import kotlin.random.Random
 
 @Composable
@@ -35,7 +35,7 @@ fun Header(
         titleContent = {
             BasicText(
                 text = title,
-                style = typography.xxl.medium,
+                style = typography.xxl.bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -51,7 +51,7 @@ fun Header(
     actionsContent: @Composable RowScope.() -> Unit,
 ) {
     Box(
-        contentAlignment = Alignment.CenterEnd,
+        contentAlignment = Alignment.CenterStart,
         modifier = modifier
             .padding(horizontal = 16.dp)
             .height(Dimensions.headerHeight)
@@ -77,7 +77,7 @@ fun HeaderPlaceholder(
     val (colorPalette, typography) = LocalAppearance.current
 
     Box(
-        contentAlignment = Alignment.CenterEnd,
+        contentAlignment = Alignment.CenterStart,
         modifier = modifier
             .padding(horizontal = 16.dp)
             .height(Dimensions.headerHeight)
@@ -90,7 +90,7 @@ fun HeaderPlaceholder(
         ) {
             BasicText(
                 text = "",
-                style = typography.xxl.medium,
+                style = typography.xxl.bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

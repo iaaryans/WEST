@@ -21,8 +21,37 @@ inline val Timeline.windows: List<Timeline.Window>
 val Player.shouldBePlaying: Boolean
     get() = !(playbackState == Player.STATE_ENDED || !playWhenReady)
 
+private data class ReplacedQueue(
+    val items: List<MediaItem>, val index: Int, val position: Long,
+    val playing: Boolean, val savedAt: Long
+)
+
+private val replacedQueues = java.util.WeakHashMap<Player, ReplacedQueue>()
+
+private fun Player.rememberQueue() {
+    if (currentMediaItemIndex !in 0 until mediaItemCount) return
+    replacedQueues[this] = ReplacedQueue(currentTimeline.mediaItems, currentMediaItemIndex,
+        currentPosition.coerceAtLeast(0), shouldBePlaying, android.os.SystemClock.elapsedRealtime())
+}
+
+internal fun Player.canRestoreQueue(): Boolean {
+    val saved = replacedQueues[this] ?: return false
+    if (android.os.SystemClock.elapsedRealtime() - saved.savedAt < 300_000L) return true
+    replacedQueues.remove(this)
+    return false
+}
+
+internal fun Player.restorePreviousQueue() {
+    if (!canRestoreQueue()) return
+    val saved = replacedQueues.remove(this) ?: return
+    setMediaItems(saved.items, saved.index, saved.position)
+    prepare()
+    playWhenReady = saved.playing
+}
+
 fun Player.seamlessPlay(mediaItem: MediaItem) {
     if (mediaItem.mediaId == currentMediaItem?.mediaId) {
+        if (mediaItemCount > 1) rememberQueue()
         if (currentMediaItemIndex > 0) removeMediaItems(0, currentMediaItemIndex)
         if (currentMediaItemIndex < mediaItemCount - 1) removeMediaItems(currentMediaItemIndex + 1, mediaItemCount)
     } else {
@@ -38,6 +67,7 @@ fun Player.shuffleQueue() {
 }
 
 fun Player.forcePlay(mediaItem: MediaItem) {
+    rememberQueue()
     setMediaItem(mediaItem, true)
     playWhenReady = true
     prepare()
@@ -46,6 +76,7 @@ fun Player.forcePlay(mediaItem: MediaItem) {
 fun Player.forcePlayAtIndex(mediaItems: List<MediaItem>, mediaItemIndex: Int) {
     if (mediaItems.isEmpty()) return
 
+    rememberQueue()
     setMediaItems(mediaItems, mediaItemIndex, C.TIME_UNSET)
     playWhenReady = true
     prepare()
@@ -57,13 +88,16 @@ fun Player.forcePlayFromBeginning(mediaItems: List<MediaItem>) =
 fun Player.forceSeekToPrevious() {
     if (hasPreviousMediaItem() || currentPosition > maxSeekToPreviousPosition) {
         seekToPrevious()
-    } else if (mediaItemCount > 0) {
+    } else if (mediaItemCount > 1) {
         seekTo(mediaItemCount - 1, C.TIME_UNSET)
     }
 }
 
-fun Player.forceSeekToNext() =
-    if (hasNextMediaItem()) seekToNext() else seekTo(0, C.TIME_UNSET)
+/** Never replay a lone search result when Next is pressed. Radio may still be loading. */
+fun Player.forceSeekToNext() {
+    if (mediaItemCount <= 1) return
+    if (hasNextMediaItem()) seekToNext()
+}
 
 fun Player.addNext(mediaItem: MediaItem) {
     if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {

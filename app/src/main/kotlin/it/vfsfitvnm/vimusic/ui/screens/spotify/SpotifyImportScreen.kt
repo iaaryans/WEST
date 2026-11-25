@@ -1,5 +1,7 @@
 package it.vfsfitvnm.vimusic.ui.screens.spotify
 
+import it.vfsfitvnm.vimusic.spotify.SpotifyMatch
+import it.vfsfitvnm.compose.persist.persist
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -68,7 +70,7 @@ val spotifyImportRoute = Route0("spotifyImportRoute")
 
 /**
  * Paste a Spotify playlist link, match its songs on YouTube Music and keep
- * the result as a local playlist. Ported from BitChord's SpotifyImportAlert,
+ * the result as a local playlist. Adapted from the playlist-import dialog,
  * restyled as a screen to fit how WEST navigates.
  *
  * Only public playlists can be read (no Spotify account is involved, by
@@ -86,6 +88,11 @@ fun SpotifyImportScreen(
 ) {
     val (colorPalette, typography) = LocalAppearance.current
     val scope = rememberCoroutineScope()
+    val preferences = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("spotify_versions", 0)
+    fun versionKey(track: SpotifyImportTrack, language: String?): String =
+        org.json.JSONArray(listOf(track.artist.trim().lowercase(java.util.Locale.ROOT),
+            track.title.trim().lowercase(java.util.Locale.ROOT), language.orEmpty().trim().lowercase(java.util.Locale.ROOT))).toString()
+    var rememberVersion by rememberSaveable { mutableStateOf(true) }
 
     // Status bar height, used to line the compact toolbar title up with the
     // sidebar's back button (both centered on the same row).
@@ -95,13 +102,67 @@ fun SpotifyImportScreen(
     var link by rememberSaveable { mutableStateOf("") }
     var selectedLanguage by rememberSaveable { mutableStateOf("No Preference") }
     var customLanguageInput by rememberSaveable { mutableStateOf("") }
-    var working by rememberSaveable { mutableStateOf(false) }
+    var working by remember { mutableStateOf(false) }
     var status by rememberSaveable { mutableStateOf<String?>(null) }
     var failed by rememberSaveable { mutableStateOf(false) }
     var progressDone by rememberSaveable { mutableStateOf(0) }
     var progressTotal by rememberSaveable { mutableStateOf(0) }
-    var result by remember { mutableStateOf<ImportResult?>(null) }
+    var result by persist<ImportResult?>("spotify/result")
+    var draft by persist<List<SpotifyMatch>?>("spotify/review")
+    var draftName by persist("spotify/name", "")
+    var draftLanguage by persist<String?>("spotify/language")
     var importJob by remember { mutableStateOf<Job?>(null) }
+
+    suspend fun finish(rows: List<SpotifyMatch>) {
+        val songs = rows.mapNotNull { it.selected }.distinctBy { it.key }
+        require(songs.isNotEmpty()) { "Select at least one track to import" }
+        withContext(kotlinx.coroutines.NonCancellable) {
+            val playlistId = withContext(Dispatchers.IO) {
+                Database.internal.runInTransaction(
+                    Callable {
+                        val id1 = Database.insert(Playlist(name = draftName))
+                        songs
+                            .map { it.asMediaItem }
+                            .onEach(Database::insert)
+                            .mapIndexed { index, mediaItem ->
+                                SongPlaylistMap(
+                                    songId = mediaItem.mediaId,
+                                    playlistId = id1,
+                                    position = index
+                                )
+                            }
+                            .let(Database::insertSongPlaylistMaps)
+                        id1
+                    }
+                )
+            }
+            result = ImportResult(
+                playlistId = playlistId,
+                playlistName = draftName,
+                totalTracks = rows.size,
+                matchedCount = songs.size,
+                unmatched = rows.filter { it.selected == null }.map { it.track },
+            )
+            draft = null
+            status = null
+        }
+    }
+
+    fun reviewAction(retry: Boolean) {
+        val rows = draft ?: return
+        working = true
+        importJob = scope.launch {
+            try {
+                if (retry) {
+                    val pending = rows.indices.filter { rows[it].selected == null && !rows[it].skipped }
+                    val matches = SpotifyImporter.resolveToSongs(pending.map { rows[it].track }, draftLanguage, { preferences.getString(versionKey(it, draftLanguage), null) }) { _, _ -> }
+                    draft = rows.toMutableList().apply { pending.forEachIndexed { i, index -> this[index] = matches[i] } }
+                } else finish(rows)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { status = e.message ?: "Import failed" }
+            finally { working = false }
+        }
+    }
 
     fun start() {
         val id = SpotifyImporter.extractPlaylistId(link)
@@ -123,40 +184,17 @@ fun SpotifyImportScreen(
             status = "Fetching playlist…"
             try {
                 val (name, tracks) = SpotifyImporter.fetchPlaylistTracks(id)
-                val (songs, missed) = SpotifyImporter.resolveToSongs(tracks, effectiveLanguage) { done, total ->
+                draftName = name
+                draftLanguage = effectiveLanguage
+                val rows = SpotifyImporter.resolveToSongs(tracks, effectiveLanguage, { preferences.getString(versionKey(it, effectiveLanguage), null) }) { done, total ->
                     progressDone = done
                     progressTotal = total
                     status = "Matching tracks ($done/$total)…"
                 }
-                if (songs.isEmpty()) error("None of the tracks could be matched on YouTube Music")
-
-                val playlistId = withContext(Dispatchers.IO) {
-                    Database.internal.runInTransaction(
-                        Callable {
-                            val id1 = Database.insert(Playlist(name = name))
-                            songs
-                                .map { it.asMediaItem }
-                                .onEach(Database::insert)
-                                .mapIndexed { index, mediaItem ->
-                                    SongPlaylistMap(
-                                        songId = mediaItem.mediaId,
-                                        playlistId = id1,
-                                        position = index
-                                    )
-                                }
-                                .let(Database::insertSongPlaylistMaps)
-                            id1
-                        }
-                    )
-                }
-                result = ImportResult(
-                    playlistId = playlistId,
-                    playlistName = name,
-                    totalTracks = tracks.size,
-                    matchedCount = songs.size,
-                    unmatched = missed,
-                )
+                require(rows.isNotEmpty()) { "This playlist has no readable tracks" }
+                draft = rows
                 status = null
+                if (rows.all { it.selected != null }) finish(rows)
             } catch (e: CancellationException) {
                 status = null
                 throw e
@@ -241,7 +279,46 @@ fun SpotifyImportScreen(
                                 progressTotal = 0
                             }
                         )
+                    } else if (draft != null) {
+                        val rows = draft.orEmpty()
+                        val pending = rows.indices.filter { rows[it].selected == null && !rows[it].skipped }
+                        BasicText("Review matches", style = typography.m.semiBold)
+                        BasicText("${rows.count { it.selected != null }} of ${rows.size} selected", style = typography.xs.secondary)
+                        val index = pending.firstOrNull()
+                        if (index != null) {
+                            val row = rows[index]
+                            BasicText("${row.track.title} · ${row.track.artist}", style = typography.s.semiBold)
+                            if (row.candidates.isEmpty()) BasicText("No candidates found", style = typography.xs.secondary)
+                            if (row.candidates.isNotEmpty()) SecondaryTextButton(
+                                if (rememberVersion) "Remember choice: on" else "Remember choice: off",
+                                onClick = { rememberVersion = !rememberVersion })
+                            row.candidates.forEach { candidate ->
+                                val label = listOfNotNull(candidate.info?.name,
+                                    candidate.authors?.joinToString(", ") { it.name.orEmpty() }, candidate.durationText).joinToString(" · ")
+                                SecondaryTextButton(label, enabled = !working, onClick = {
+                                    val key = versionKey(row.track, draftLanguage)
+                                    preferences.edit().apply {
+                                        if (rememberVersion) putString(key, candidate.key) else remove(key)
+                                    }.apply()
+                                    draft = rows.toMutableList().apply { this[index] = row.copy(selected = candidate) }
+                                })
+                            }
+                            SecondaryTextButton("Skip this track", enabled = !working, onClick = {
+                                draft = rows.toMutableList().apply { this[index] = row.copy(skipped = true) }
+                            })
+                            SecondaryTextButton(if (working) "Working…" else "Retry pending (${pending.size})",
+                                enabled = !working, onClick = { reviewAction(true) })
+                        }
+                        SecondaryTextButton("Import selected tracks", enabled = !working && rows.any { it.selected != null },
+                            onClick = { reviewAction(false) })
+                        SecondaryTextButton("Start over", enabled = !working, onClick = { draft = null; status = null })
+                        status?.let { BasicText(it, style = typography.xs.secondary) }
                     } else {
+                        var resetChoices by remember { mutableStateOf(false) }
+                        if (preferences.all.isNotEmpty()) SecondaryTextButton("Reset remembered versions", onClick = { resetChoices = true })
+                        if (resetChoices) it.vfsfitvnm.vimusic.ui.components.themed.ConfirmationDialog(
+                            text = "Forget all saved song versions?", confirmText = "Reset",
+                            onDismiss = { resetChoices = false }, onConfirm = { preferences.edit().clear().apply(); resetChoices = false })
                         BasicTextField(
                             value = link,
                             onValueChange = {
@@ -429,7 +506,7 @@ private fun ImportSummary(
 
         if (result.unmatched.isNotEmpty()) {
             BasicText(
-                text = "No YouTube Music match found for ${result.unmatched.size} " +
+                text = "Left out of this import: ${result.unmatched.size} " +
                     if (result.unmatched.size == 1) "track" else "tracks",
                 style = typography.xxs.medium.copy(color = colorPalette.textSecondary)
             )

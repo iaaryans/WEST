@@ -1,0 +1,21 @@
+WEST Moodspace Explore redesign — source attribution
+
+Reference: BitChord, https://github.com/kushagrasinghx/BitChord
+Source supplied by the user as BitChord-main(3).zip
+Reference paths:
+  sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/ExploreScreen.kt
+  shared/src/jvmSharedMain/kotlin/com/music/bitchord/data/innertube/InnertubeParser.kt
+  shared/src/jvmSharedMain/kotlin/com/music/bitchord/data/model/Models.kt
+  shared/src/jvmSharedMain/kotlin/com/music/bitchord/data/YtMusicRepository.kt
+
+The WEST mood-card sleeve layout, duotone color-matrix treatment, responsive
+category grid, server-defined category navigation, and shelf parsing are
+adapted from the above BitChord source, reimplemented against WEST's
+Android Compose, Innertube and WEST Intelligence infrastructure.
+
+Both this WEST source archive and the supplied BitChord reference have GNU GPL
+version 3 license files. Their GNU GPL v3 terms apply to the modified sources.
+Do not remove existing license notices or this attribution when redistributing.
+
+WEST's UI heading, bottom navigation, player queue, personalized discovery,
+local listening preferences, and recommendation logic remain WEST-specific.

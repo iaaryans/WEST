@@ -29,6 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import it.vfsfitvnm.vimusic.Database
+import it.vfsfitvnm.vimusic.intelligence.IntelligencePreferences
+import it.vfsfitvnm.vimusic.personalization.TasteProfileStore
+import it.vfsfitvnm.vimusic.utils.preferences
 import it.vfsfitvnm.vimusic.LocalPlayerAwareWindowInsets
 import it.vfsfitvnm.vimusic.query
 import it.vfsfitvnm.vimusic.service.PlayerMediaBrowserService
@@ -81,12 +84,6 @@ fun OtherSettings() {
             isIgnoringBatteryOptimizations = context.isIgnoringBatteryOptimizations
         }
 
-    var pauseSearchHistory by rememberPreference(pauseSearchHistoryKey, false)
-
-    val queriesCount by remember {
-        Database.queriesCount().distinctUntilChanged()
-    }.collectAsState(initial = 0)
-
     Column(
         modifier = Modifier
             .background(colorPalette.background0)
@@ -98,7 +95,7 @@ fun OtherSettings() {
                     .asPaddingValues()
             )
     ) {
-        Header(title = "Other")
+        Header(title = "Devices & background")
 
         SettingsEntryGroupText(title = "ANDROID AUTO")
 
@@ -109,28 +106,6 @@ fun OtherSettings() {
             text = "Enable Android Auto support",
             isChecked = isAndroidAutoEnabled,
             onCheckedChange = { isAndroidAutoEnabled = it }
-        )
-
-        SettingsGroupSpacer()
-
-        SettingsEntryGroupText(title = "SEARCH HISTORY")
-
-        SwitchSettingEntry(
-            title = "Pause search history",
-            text = "Neither save new searched queries nor show history",
-            isChecked = pauseSearchHistory,
-            onCheckedChange = { pauseSearchHistory = it }
-        )
-
-        SettingsEntry(
-            title = "Clear search history",
-            text = if (queriesCount > 0) {
-                "Delete $queriesCount search queries"
-            } else {
-                "History is empty"
-            },
-            isEnabled = queriesCount > 0,
-            onClick = { query(Database::clearQueries) }
         )
 
         SettingsGroupSpacer()
@@ -178,5 +153,102 @@ fun OtherSettings() {
             isChecked = isInvincibilityEnabled,
             onCheckedChange = { isInvincibilityEnabled = it }
         )
+    }
+}
+
+@ExperimentalAnimationApi
+@Composable
+fun PrivacySettings() {
+    val prefs = LocalContext.current.preferences
+    var intelligenceEnabled by rememberPreference(IntelligencePreferences.ENABLED, true)
+    var intelligenceDiscovery by rememberPreference(IntelligencePreferences.DISCOVERY, 35)
+    var pauseSearchHistory by rememberPreference(pauseSearchHistoryKey, false)
+
+    val queriesCount by remember {
+        Database.queriesCount().distinctUntilChanged()
+    }.collectAsState(initial = 0)
+
+    val eventsCount by remember {
+        Database.eventsCount().distinctUntilChanged()
+    }.collectAsState(initial = 0)
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Header(title = "Privacy & history")
+        SettingsEntryGroupText(title = "SEARCH HISTORY")
+
+        SwitchSettingEntry(
+            title = "Pause search history",
+            text = "Neither save new searched queries nor show history",
+            isChecked = pauseSearchHistory,
+            onCheckedChange = { pauseSearchHistory = it }
+        )
+
+        SettingsEntry(
+            title = "Clear search history",
+            text = if (queriesCount > 0) {
+                "Delete $queriesCount search queries"
+            } else {
+                "History is empty"
+            },
+            isEnabled = queriesCount > 0,
+            onClick = { query(Database::clearQueries) }
+        )
+
+        SettingsGroupSpacer()
+
+        SettingsEntryGroupText(title = "WEST INTELLIGENCE")
+
+        SwitchSettingEntry(
+            title = "Personalized recommendations",
+            text = "Use favorites and listening history to make local music recommendations",
+            isChecked = intelligenceEnabled,
+            onCheckedChange = { intelligenceEnabled = it }
+        )
+
+        ValueSelectorSettingsEntry(
+            title = "New music discovery",
+            selectedValue = intelligenceDiscovery,
+            values = listOf(0, 25, 35, 50, 75, 100),
+            onValueSelected = { intelligenceDiscovery = it },
+            valueText = { "$it% exploration" }
+        )
+
+        SettingsEntry(
+            title = "Edit music taste & favorite artists",
+            text = "Change your languages, artists, songs and Moodspace preferences",
+            onClick = { TasteProfileStore.requestEdit(prefs) }
+        )
+
+        SettingsEntry(
+            title = "Reset music taste profile",
+            text = "Clear onboarding choices without clearing listening history or favorites",
+            onClick = { TasteProfileStore.reset(prefs) }
+        )
+
+        SettingsEntry(
+            title = "Reset WEST Intelligence feedback",
+            text = "Clear More like this / Less like this choices; keep your favorites and history",
+            onClick = {
+                IntelligencePreferences.reset(prefs)
+                intelligenceDiscovery = 35
+            }
+        )
+
+        SettingsGroupSpacer()
+        SettingsEntryGroupText(title = "EXISTING QUICK PICKS")
+
+        SettingsEntry(
+            title = "Reset quick picks",
+            text = if (eventsCount > 0) {
+                "Delete $eventsCount playback events"
+            } else {
+                "Quick picks are cleared"
+            },
+            isEnabled = eventsCount > 0,
+            onClick = { query(Database::clearEvents) }
+        )
+
+        SettingsGroupSpacer()
+
     }
 }

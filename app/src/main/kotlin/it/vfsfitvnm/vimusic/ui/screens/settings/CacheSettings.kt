@@ -58,7 +58,7 @@ fun CacheSettings() {
                     .asPaddingValues()
             )
     ) {
-        Header(title = "Cache")
+        Header(title = "Storage")
 
         SettingsDescription(text = "When the cache runs out of space, the resources that haven't been accessed for the longest time are cleared")
 

@@ -1,6 +1,7 @@
 package it.vfsfitvnm.vimusic.ui.components
 
 import androidx.compose.animation.core.Animatable
+import it.vfsfitvnm.vimusic.ui.components.themed.LocalReducedMotion
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -114,13 +115,15 @@ fun MusicBars(
         )
     }
 
-    LaunchedEffect(Unit) {
+    val reducedMotion = LocalReducedMotion.current
+    // Stop all three infinite animation loops for reduced-motion/low-RAM devices.
+    // A static equalizer retains the playback affordance without per-frame work.
+    LaunchedEffect(reducedMotion) {
+        if (reducedMotion) return@LaunchedEffect
         animatablesWithSteps.forEach { (animatable, steps) ->
             launch {
                 while (true) {
-                    steps.forEach { step ->
-                        animatable.animateTo(step)
-                    }
+                    steps.forEach { step -> animatable.animateTo(step) }
                 }
             }
         }
@@ -139,8 +142,8 @@ fun MusicBars(
             ) {
                 drawRoundRect(
                     color = color,
-                    topLeft = Offset(x = 0f, y = size.height * (1 - animatable.value)),
-                    size = size.copy(height = animatable.value * size.height),
+                    topLeft = Offset(x = 0f, y = size.height * (1 - if (reducedMotion) .42f else animatable.value)),
+                    size = size.copy(height = (if (reducedMotion) .42f else animatable.value) * size.height),
                     cornerRadius = CornerRadius(cornerRadius.toPx())
                 )
             }

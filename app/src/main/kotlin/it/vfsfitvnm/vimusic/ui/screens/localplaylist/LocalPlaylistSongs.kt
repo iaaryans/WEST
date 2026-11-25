@@ -79,6 +79,13 @@ fun LocalPlaylistSongs(
 
     var playlistWithSongs by persist<PlaylistWithSongs?>("localPlaylist/$playlistId/playlistWithSongs")
 
+    fun playlistItem(song: Song): androidx.media3.common.MediaItem {
+        val item = song.asMediaItem
+        val extras = android.os.Bundle(item.mediaMetadata.extras ?: android.os.Bundle())
+        extras.putString("queuePlaylist", playlistWithSongs?.playlist?.name)
+        return item.buildUpon().setMediaMetadata(item.mediaMetadata.buildUpon().setExtras(extras).build()).build()
+    }
+
     LaunchedEffect(Unit) {
         Database.playlistWithSongs(playlistId).filterNotNull().collect { playlistWithSongs = it }
     }
@@ -148,6 +155,7 @@ fun LocalPlaylistSongs(
                 key = "header",
                 contentType = 0
             ) {
+                androidx.compose.foundation.layout.Column {
                 Header(
                     title = playlistWithSongs?.playlist?.name ?: "Unknown",
                     modifier = Modifier
@@ -158,7 +166,7 @@ fun LocalPlaylistSongs(
                         enabled = playlistWithSongs?.songs?.isNotEmpty() == true,
                         onClick = {
                             playlistWithSongs?.songs
-                                ?.map(Song::asMediaItem)
+                                ?.map(::playlistItem)
                                 ?.let { mediaItems ->
                                     binder?.player?.enqueue(mediaItems)
                                 }
@@ -230,6 +238,11 @@ fun LocalPlaylistSongs(
                         }
                     )
                 }
+                OfflinePlaylistAction(playlistId) { ready ->
+                    binder?.stopRadio()
+                    binder?.player?.forcePlayFromBeginning(ready.map(::playlistItem))
+                }
+                }
             }
 
             itemsIndexed(
@@ -266,7 +279,7 @@ fun LocalPlaylistSongs(
                             },
                             onClick = {
                                 playlistWithSongs?.songs
-                                    ?.map(Song::asMediaItem)
+                                    ?.map(::playlistItem)
                                     ?.let { mediaItems ->
                                         binder?.stopRadio()
                                         binder?.player?.forcePlayAtIndex(mediaItems, index)
@@ -288,7 +301,7 @@ fun LocalPlaylistSongs(
                     if (songs.isNotEmpty()) {
                         binder?.stopRadio()
                         binder?.player?.forcePlayFromBeginning(
-                            songs.shuffled().map(Song::asMediaItem)
+                            songs.shuffled().map(::playlistItem)
                         )
                     }
                 }

@@ -9,6 +9,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -283,11 +285,16 @@ fun Lyrics(
                             .verticalFadingEdge()
                     ) {
                         itemsIndexed(items = synchronizedLyrics.sentences) { index, sentence ->
+                            val lineColor by animateColorAsState(
+                                targetValue = if (index == synchronizedLyrics.index) Color.White else Color.White.copy(alpha = 0.45f),
+                                animationSpec = tween(320)
+                            )
                             BasicText(
                                 text = sentence.second,
-                                style = typography.xs.center.medium.color(if (index == synchronizedLyrics.index) PureBlackColorPalette.text else PureBlackColorPalette.textDisabled),
+                                style = typography.s.medium.color(lineColor),
                                 modifier = Modifier
-                                    .padding(vertical = 4.dp, horizontal = 32.dp)
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp, horizontal = 24.dp)
                             )
                         }
                     }

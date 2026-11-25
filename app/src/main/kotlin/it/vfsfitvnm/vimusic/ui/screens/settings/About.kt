@@ -39,7 +39,7 @@ fun About() {
     ) {
         Header(title = "About") {
             BasicText(
-                text = "v${BuildConfig.VERSION_NAME} by Aaryan",
+                text = "v${BuildConfig.VERSION_NAME} by Aaryan & Adarsh",
                 style = typography.s.secondary
             )
         }
@@ -54,15 +54,31 @@ fun About() {
             }
         )
 
+        SettingsEntry(
+            title = "Adarsh",
+            text = "Developer, Designer & Maintainer",
+            onClick = {
+                uriHandler.openUri("https://github.com/adarsh01-cyber")
+            }
+        )
+
         SettingsGroupSpacer()
 
         SettingsEntryGroupText(title = "SOCIAL")
 
         SettingsEntry(
-            title = "GitHub",
+            title = "GitHub — Aaryan",
             text = "https://github.com/iaaryans",
             onClick = {
                 uriHandler.openUri("https://github.com/iaaryans/")
+            }
+        )
+
+        SettingsEntry(
+            title = "GitHub — Adarsh",
+            text = "https://github.com/adarsh01-cyber",
+            onClick = {
+                uriHandler.openUri("https://github.com/adarsh01-cyber")
             }
         )
 

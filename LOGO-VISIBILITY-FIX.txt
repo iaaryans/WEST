@@ -1,0 +1,35 @@
+WEST Logo Visibility / Theme Compatibility Fix
+
+Base: WEST-Logo-Updated-Full-Source-With-Git-No-APK.zip
+Artwork reference: user-supplied WEST wordmark with red audio-wave symbol.
+
+Fixed the Home header logo that previously rendered a 1254x1254 square
+image inside a tiny 42dp slot. The actual graphic was surrounded by
+large empty margins, rendering its artwork as a tiny unreadable shape.
+
+Changes:
+- Replaced Home with a responsive, tightly cropped 917x220 wordmark
+  now rendered up to 152dp wide and 40dp high, preserving the original red
+  waveform. The row's remaining space is reserved for Insights/Settings.
+- Added light and dark logo image resources. The Compose Home header
+  selects them using WEST's actual active colorPalette.isDark state, not
+  the system theme alone. This includes manually-selected light/dark themes,
+  pure black, and dynamic palette mode.
+- Removed the "STRAIGHT OUTTA CLOUD" tagline from the Home header.
+  "Listen now" remains directly below the compact WEST wordmark.
+- Replaced the legacy 1254x1254 west_logo_full.png (used by the banner)
+  with a cropped transparent 917x289 source-based full logo.
+- Preserved launcher icons, notification icon, WEST Intelligence,
+  navigation, playback and all other application functionality.
+
+Source-image checks:
+- Dark wordmark on white background: approximately 19.6:1 contrast.
+- Light wordmark on WEST default dark background: approximately 18.2:1.
+- Red waveform is retained in both theme variants.
+- The two wordmark files have identical dimensions and alpha coverage.
+
+Validation boundary:
+- PNG images have been inspected and their contrast measured.
+- Android compilation was attempted, but Gradle 7.4 could not be downloaded
+  from services.gradle.org in this environment. No APK or device screenshot
+  is included or claimed to have been verified.

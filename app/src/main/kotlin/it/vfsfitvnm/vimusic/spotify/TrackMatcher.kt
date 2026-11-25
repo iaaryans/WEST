@@ -6,7 +6,7 @@ import java.util.Locale
 
 /**
  * Decides whether one catalogue's track is the same recording as another's.
- * Ported from BitChord for the Spotify import, matching rules unchanged.
+ * Spotify import matcher, matching rules unchanged.
  *
  * Its two failure modes are both silent:
  *

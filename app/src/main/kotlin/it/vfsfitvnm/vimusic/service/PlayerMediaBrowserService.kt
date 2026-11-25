@@ -41,6 +41,7 @@ class PlayerMediaBrowserService : MediaBrowserService(), ServiceConnection {
     private var lastSongs = emptyList<Song>()
 
     private var bound = false
+    private var onNext: (() -> Unit)? = null
 
     override fun onDestroy() {
         if (bound) {
@@ -53,11 +54,14 @@ class PlayerMediaBrowserService : MediaBrowserService(), ServiceConnection {
         if (service is PlayerService.Binder) {
             bound = true
             sessionToken = service.mediaSession.sessionToken
+            onNext = service::skipToNextOrDiscover
             service.mediaSession.setCallback(SessionCallback(service.player, service.cache))
         }
     }
 
-    override fun onServiceDisconnected(name: ComponentName) = Unit
+    override fun onServiceDisconnected(name: ComponentName) {
+        onNext = null
+    }
 
     override fun onGetRoot(
         clientPackageName: String,
@@ -227,7 +231,7 @@ class PlayerMediaBrowserService : MediaBrowserService(), ServiceConnection {
         override fun onPlay() = player.play()
         override fun onPause() = player.pause()
         override fun onSkipToPrevious() = player.forceSeekToPrevious()
-        override fun onSkipToNext() = player.forceSeekToNext()
+        override fun onSkipToNext() = (onNext ?: player::forceSeekToNext).invoke()
         override fun onSeekTo(pos: Long) = player.seekTo(pos)
         override fun onSkipToQueueItem(id: Long) = player.seekToDefaultPosition(id.toInt())
 

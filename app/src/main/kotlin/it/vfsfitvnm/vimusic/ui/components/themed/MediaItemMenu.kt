@@ -192,6 +192,7 @@ fun QueuedMediaItemMenu(
 fun BaseMediaItemMenu(
     onDismiss: () -> Unit,
     mediaItem: MediaItem,
+    onTrackInfo: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     onGoToEqualizer: (() -> Unit)? = null,
     onShowSleepTimer: (() -> Unit)? = null,
@@ -207,6 +208,7 @@ fun BaseMediaItemMenu(
 
     MediaItemMenu(
         mediaItem = mediaItem,
+        onTrackInfo = onTrackInfo,
         onDismiss = onDismiss,
         onGoToEqualizer = onGoToEqualizer,
         onShowSleepTimer = onShowSleepTimer,
@@ -252,6 +254,7 @@ fun BaseMediaItemMenu(
 fun MediaItemMenu(
     onDismiss: () -> Unit,
     mediaItem: MediaItem,
+    onTrackInfo: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     onGoToEqualizer: (() -> Unit)? = null,
     onShowSleepTimer: (() -> Unit)? = null,
@@ -392,6 +395,9 @@ fun MediaItemMenu(
                 modifier = modifier
                     .onPlaced { height = with(density) { it.size.height.toDp() } }
             ) {
+                if (onTrackInfo != null) MenuEntry(R.drawable.information, "Track info", onClick = {
+                    onDismiss(); onTrackInfo()
+                })
                 val thumbnailSizeDp = Dimensions.thumbnails.song
                 val thumbnailSizePx = thumbnailSizeDp.px
 

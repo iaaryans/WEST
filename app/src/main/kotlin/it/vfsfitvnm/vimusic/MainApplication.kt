@@ -20,7 +20,10 @@ class MainApplication : Application(), ImageLoaderFactory {
 
     override fun newImageLoader(): ImageLoader {
         return ImageLoader.Builder(this)
-            .crossfade(true)
+            // Each scrollable shelf already provides its own interaction motion.
+            // Animated bitmap crossfades on dozens of concurrent image loads
+            // create unnecessary overlapping layers and dropped frames.
+            .crossfade(false)
             .respectCacheHeaders(false)
             .diskCache(
                 DiskCache.Builder()
