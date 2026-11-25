@@ -24,7 +24,6 @@ import androidx.compose.ui.platform.LocalUriHandler
 import it.vfsfitvnm.vimusic.BuildConfig
 import it.vfsfitvnm.vimusic.LocalPlayerAwareWindowInsets
 import it.vfsfitvnm.vimusic.updater.AppUpdateManager
-import it.vfsfitvnm.vimusic.updater.UpdatePromptSheet
 import it.vfsfitvnm.vimusic.updater.UpdateUiState
 import it.vfsfitvnm.vimusic.ui.components.themed.Header
 import it.vfsfitvnm.vimusic.ui.styling.LocalAppearance
@@ -40,11 +39,6 @@ fun About() {
     val prefs = remember { context.preferences }
 
     val updateState by AppUpdateManager.state.collectAsState()
-    var showUpdateSheet by remember { mutableStateOf(false) }
-
-    if (showUpdateSheet) {
-        UpdatePromptSheet(onDismiss = { showUpdateSheet = false })
-    }
 
     Column(
         modifier = Modifier
@@ -70,11 +64,7 @@ fun About() {
             title = "Check for updates",
             text = updateStatusText(updateState, prefs),
             onClick = {
-                val current = AppUpdateManager.state.value
-                if (current is UpdateUiState.Idle || current is UpdateUiState.Error) {
-                    AppUpdateManager.checkNow(context)
-                }
-                showUpdateSheet = true
+                AppUpdateManager.checkNow(context)
             }
         )
 
