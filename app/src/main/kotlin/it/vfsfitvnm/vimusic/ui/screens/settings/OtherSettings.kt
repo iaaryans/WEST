@@ -38,6 +38,7 @@ import it.vfsfitvnm.vimusic.service.PlayerMediaBrowserService
 import it.vfsfitvnm.vimusic.ui.components.themed.Header
 import it.vfsfitvnm.vimusic.ui.styling.LocalAppearance
 import it.vfsfitvnm.vimusic.updater.AppUpdateManager
+import it.vfsfitvnm.vimusic.updater.UpdateBackgroundWorker
 import it.vfsfitvnm.vimusic.utils.isAtLeastAndroid12
 import it.vfsfitvnm.vimusic.utils.isAtLeastAndroid6
 import it.vfsfitvnm.vimusic.utils.isIgnoringBatteryOptimizations
@@ -160,11 +161,17 @@ fun OtherSettings() {
 @ExperimentalAnimationApi
 @Composable
 fun PrivacySettings() {
-    val prefs = LocalContext.current.preferences
+    val context = LocalContext.current
+    val prefs = context.preferences
     var intelligenceEnabled by rememberPreference(IntelligencePreferences.ENABLED, true)
     var intelligenceDiscovery by rememberPreference(IntelligencePreferences.DISCOVERY, 35)
     var pauseSearchHistory by rememberPreference(pauseSearchHistoryKey, false)
     var autoCheckUpdates by rememberPreference(AppUpdateManager.PREF_AUTO_CHECK, true)
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) UpdateBackgroundWorker.schedule(context, autoCheckUpdates)
+    }
 
     val queriesCount by remember {
         Database.queriesCount().distinctUntilChanged()
@@ -240,11 +247,31 @@ fun PrivacySettings() {
         SettingsEntryGroupText(title = "UPDATES")
 
         SwitchSettingEntry(
-            title = "Auto-check for updates on launch",
-            text = "Check GitHub for new WEST releases at most once every 6 hours",
+            title = "Automatically check for updates",
+            text = "Check on launch, while WEST is open and periodically in the background",
             isChecked = autoCheckUpdates,
-            onCheckedChange = { autoCheckUpdates = it }
+            onCheckedChange = { enabled ->
+                autoCheckUpdates = enabled
+                UpdateBackgroundWorker.schedule(context, enabled)
+                if (enabled) AppUpdateManager.maybeAutoCheck(context)
+            }
         )
+
+        if (android.os.Build.VERSION.SDK_INT >= 33 && autoCheckUpdates) {
+            SettingsEntry(
+                title = "Enable update notifications",
+                text = "Allow WEST to notify you of new releases when the app is closed",
+                onClick = {
+                    if (context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        })
+                    }
+                }
+            )
+        }
 
         SettingsGroupSpacer()
         SettingsEntryGroupText(title = "EXISTING QUICK PICKS")
