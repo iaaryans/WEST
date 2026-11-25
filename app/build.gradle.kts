@@ -1,5 +1,3 @@
-import java.util.Properties
-
 plugins {
     id("com.android.application")
     kotlin("android")
@@ -27,38 +25,14 @@ android {
 
     namespace = "it.vfsfitvnm.vimusic"
 
-    // Release credentials are supplied locally or by CI; never commit them.
-    val signingProperties = Properties()
-    val signingPropertiesFile = rootProject.file("keystore.properties")
-    if (signingPropertiesFile.isFile) {
-        signingPropertiesFile.inputStream().use { signingProperties.load(it) }
-    }
-    fun signingValue(name: String): String? =
-        System.getenv(name)?.takeIf { it.isNotBlank() }
-            ?: signingProperties.getProperty(name)?.takeIf { it.isNotBlank() }
-
-    val keystoreFile = rootProject.file(signingValue("KEYSTORE_FILE") ?: "release.keystore")
-    val releaseStorePassword = signingValue("KEYSTORE_PASSWORD")
-    val releaseKeyAlias = signingValue("KEY_ALIAS")
-    val releaseKeyPassword = signingValue("KEY_PASSWORD")
-    val releaseSigningRequested = signingPropertiesFile.isFile || keystoreFile.exists() ||
-        signingValue("KEYSTORE_FILE") != null || releaseStorePassword != null ||
-        releaseKeyAlias != null || releaseKeyPassword != null
-    val releaseSigningConfigured = keystoreFile.isFile && releaseStorePassword != null &&
-        releaseKeyAlias != null && releaseKeyPassword != null
-    require(!releaseSigningRequested || releaseSigningConfigured) {
-        "Incomplete WEST release signing configuration. Provide an existing KEYSTORE_FILE " +
-            "and KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD through environment variables " +
-            "or the ignored keystore.properties file."
-    }
-
+    val keystoreFile = file("${rootDir}/release.keystore")
     signingConfigs {
         create("release") {
-            if (releaseSigningConfigured) {
+            if (keystoreFile.exists()) {
                 storeFile = keystoreFile
-                storePassword = releaseStorePassword
-                keyAlias = releaseKeyAlias
-                keyPassword = releaseKeyPassword
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "westmusic123"
+                keyAlias = System.getenv("KEY_ALIAS") ?: "westkey"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: "westmusic123"
                 enableV1Signing = true
                 enableV2Signing = true
                 enableV3Signing = true
@@ -78,23 +52,10 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             manifestPlaceholders["appName"] = "WEST"
-            if (releaseSigningConfigured) {
+            if (keystoreFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-        }
-
-        // Separate, locally signed, release-like build for device profiling.
-        // It coexists with debug/preview and never uses production credentials.
-        create("performance") {
-            initWith(getByName("release"))
-            applicationIdSuffix = ".performance"
-            isDebuggable = false
-            isMinifyEnabled = true
-            isShrinkResources = true
-            signingConfig = signingConfigs.getByName("debug")
-            matchingFallbacks += listOf("release")
-            manifestPlaceholders["appName"] = "WEST"
         }
     }
 
