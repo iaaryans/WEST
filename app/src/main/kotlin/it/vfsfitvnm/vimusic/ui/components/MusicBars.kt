@@ -26,7 +26,7 @@ fun MusicBars(
     barWidth: Dp = 4.dp,
     cornerRadius: Dp = 16.dp
 ) {
-    val animatablesWithSteps = remember {
+    val animatablesWithSteps = remember<List<Pair<Animatable<Float, androidx.compose.animation.core.AnimationVector1D>, List<Float>>>> {
         listOf(
             Animatable(0f) to listOf(
                 0.2f,
