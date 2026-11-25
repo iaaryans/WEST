@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.ExperimentalComposeUiApi
 import it.vfsfitvnm.vimusic.ui.components.themed.DialogTextButton
 import it.vfsfitvnm.vimusic.ui.styling.LocalAppearance
 import it.vfsfitvnm.vimusic.utils.medium
@@ -29,6 +30,7 @@ import it.vfsfitvnm.vimusic.utils.secondary
 import it.vfsfitvnm.vimusic.utils.semiBold
 import java.util.Locale
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun UpdatePromptSheet(
     onDismiss: () -> Unit
