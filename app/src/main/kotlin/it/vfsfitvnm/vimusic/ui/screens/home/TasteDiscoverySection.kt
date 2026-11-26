@@ -85,7 +85,7 @@ internal fun TasteDiscoverySection(feed: TasteDiscoveryFeed, width: Dp) {
     val results = feed.songs
     val loading = feed.loading
     val pages = remember(results) { HomeShelfPolicy.pages(results) }
-    val queue = remember(results) { results.map { it.asMediaItem } }
+    val queue = remember<List<androidx.media3.common.MediaItem>>(results) { results.map { it.asMediaItem } }
     HomeShelfTitle("Picked for you", "Based on your artists and favorite songs · WEST Intelligence")
     if (feed.moods.isNotEmpty()) {
         BasicText("Your vibes: ${feed.moods.joinToString(" · ")}",

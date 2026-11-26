@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.BrowserUserAgent
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
@@ -13,6 +14,7 @@ import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.IOException
 
@@ -25,14 +27,19 @@ internal class GitHubReleaseClient(
     }
 
     suspend fun fetchLatest(): WestRelease = withContext(Dispatchers.IO) {
-        val response = client.get(apiBaseUrl)
-        when (response.status) {
-            HttpStatusCode.Forbidden, HttpStatusCode.TooManyRequests ->
-                throw GitHubApiRateLimitException(response.status.value)
-            HttpStatusCode.OK -> Unit
-            else -> throw IOException("GitHub API returned HTTP ${response.status.value}")
+        val result = withTimeoutOrNull(20_000L) {
+            val response = client.get(apiBaseUrl) {
+                header(HttpHeaders.CacheControl, "no-cache")
+            }
+            when (response.status) {
+                HttpStatusCode.Forbidden, HttpStatusCode.TooManyRequests ->
+                    throw GitHubApiRateLimitException(response.status.value)
+                HttpStatusCode.OK -> Unit
+                else -> throw IOException("GitHub API returned HTTP ${response.status.value}")
+            }
+            parseRelease(response.bodyAsText())
         }
-        parseRelease(response.bodyAsText())
+        result ?: throw java.net.SocketTimeoutException("GitHub release check timed out")
     }
 
     suspend fun streamApk(

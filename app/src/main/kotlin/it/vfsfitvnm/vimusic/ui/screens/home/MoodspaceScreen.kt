@@ -85,7 +85,9 @@ internal fun MoodspaceScreen(onBack: (() -> Unit)? = null, onBrowseClick: (Strin
     val artwork = remember { mutableStateMapOf<String, String>() }
     // Maintain a bounded, per-screen negative/positive lookup ledger; don't launch
     // network work from each card composition while the user is flinging.
-    val attemptedArtworks = remember { HashSet<String>() }
+    // The calculation returns a mutable set, not Unit; older Compose lint misidentifies it.
+    @Suppress("RememberReturnType")
+    val attemptedArtworks = remember { mutableSetOf<String>() }
     // The offline catalog is rendered immediately, before the network has responded.
     LaunchedEffect(refresh) {
         catalogLoading = true
@@ -107,7 +109,7 @@ internal fun MoodspaceScreen(onBack: (() -> Unit)? = null, onBrowseClick: (Strin
 
     // A category is a subpage of Moodspace, not a new bottom navigation tab.
     var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
-    val selected = remember(sorted, selectedKey) {
+    val selected = remember<MoodExploreCategory?>(sorted, selectedKey) {
         sorted.firstOrNull { MoodspaceSafety.categoryId(it) == selectedKey }
     }
     val listState = rememberLazyListState()
@@ -191,7 +193,7 @@ internal fun MoodspaceScreen(onBack: (() -> Unit)? = null, onBrowseClick: (Strin
     val screenPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
     BoxWithConstraints(Modifier.fillMaxSize().background(palette.background0)) {
         val columns = (((maxWidth - 32.dp + 12.dp) / (220.dp + 12.dp)).toInt()).coerceIn(2, 6)
-        val rows = remember(sorted, columns) { sorted.chunked(columns) }
+        val rows = remember<List<List<MoodExploreCategory>>>(sorted, columns) { sorted.chunked(columns) }
         // Only resolve covers for rows actually on screen (plus the next row).
         // During a fling the work is cancelled; the tinted cards remain visible.
         LaunchedEffect(selectedKey, rows, columns, refresh) {

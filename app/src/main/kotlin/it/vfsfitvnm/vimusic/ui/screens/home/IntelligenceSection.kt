@@ -45,12 +45,12 @@ internal fun IntelligenceSection(state: IntelligenceSnapshot, width: Dp, redisco
     if (!state.enabled) return
     val binder = LocalPlayerServiceBinder.current
     val art = Dimensions.thumbnails.song
-    val entries = remember(state, rediscover) {
+    val entries = remember<List<it.vfsfitvnm.vimusic.intelligence.RecommendedSong>>(state, rediscover) {
         (if (rediscover) state.rediscover else state.madeForYou).take(12)
     }
     if (entries.isEmpty()) return
     val pages = remember(entries) { HomeShelfPolicy.pages(entries) }
-    val queue = remember(entries) { entries.map { it.song.asMediaItem } }
+    val queue = remember<List<androidx.media3.common.MediaItem>>(entries) { entries.map { it.song.asMediaItem } }
     HomeShelfTitle(if (rediscover) "Forgotten gems" else "Made for you",
         if (rediscover) "Songs worth hearing again" else "Your evolving listening profile")
     HomeSongPages(pages, width, { it.song.id }) { entry ->

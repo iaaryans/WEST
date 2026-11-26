@@ -4,6 +4,7 @@ package it.vfsfitvnm.vimusic
 
 import it.vfsfitvnm.vimusic.ui.components.themed.LocalReducedMotion
 import it.vfsfitvnm.vimusic.updater.AppUpdateManager
+import it.vfsfitvnm.vimusic.updater.UpdatePromptSheet
 import it.vfsfitvnm.vimusic.updater.IntelligenceUpdateBridge
 
 import android.content.ComponentName
@@ -39,6 +40,7 @@ import androidx.compose.material.ripple.RippleAlpha
 import androidx.compose.material.ripple.RippleTheme
 import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.derivedStateOf
@@ -107,6 +109,8 @@ import it.vfsfitvnm.vimusic.utils.preferences
 import it.vfsfitvnm.vimusic.utils.thumbnailRoundnessKey
 import it.vfsfitvnm.vimusic.utils.useSystemFontKey
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -129,6 +133,7 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
     private var binder by mutableStateOf<PlayerService.Binder?>(null)
 
     override lateinit var persistMap: PersistMap
+    private var updatePollJob: Job? = null
 
     override fun onStart() {
         super.onStart()
@@ -156,8 +161,6 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                 ).show()
             }
         }
-        AppUpdateManager.maybeAutoCheck(this)
-
         setContent {
             val lowRamDevice = remember {
                 (getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).isLowRamDevice
@@ -396,6 +399,10 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                     LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
                     LocalLayoutDirection provides LayoutDirection.Ltr
                 ) {
+                    val showUpdatePrompt by AppUpdateManager.promptVisible.collectAsState()
+                    if (showUpdatePrompt && !showPersonalization) {
+                        UpdatePromptSheet(onDismiss = AppUpdateManager::dismissPrompt)
+                    }
                     if (showPersonalization) {
                         PersonalizationOnboardingScreen(onFinished = { showPersonalization = false })
                     } else {
@@ -474,6 +481,19 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
     override fun onResume() {
         super.onResume()
         AppUpdateManager.maybeResumeInstall(this)
+        updatePollJob?.cancel()
+        updatePollJob = lifecycleScope.launch {
+            while (isActive) {
+                AppUpdateManager.maybeAutoCheck(this@MainActivity)
+                delay(AppUpdateManager.FOREGROUND_POLL_MS)
+            }
+        }
+    }
+
+    override fun onPause() {
+        updatePollJob?.cancel()
+        updatePollJob = null
+        super.onPause()
     }
 
     override fun onNewIntent(intent: Intent?) {

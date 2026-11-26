@@ -12,8 +12,8 @@ android {
         minSdk = 21
         targetSdk = 34
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 21
-        versionName = "0.5.5"
+        versionCode = 22
+        versionName = "0.5.6"
     }
 
     splits {
@@ -99,6 +99,7 @@ kapt {
 }
 
 dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation(projects.composePersist)
     implementation(projects.composeRouting)
     implementation(projects.composeReordering)
