@@ -45,7 +45,7 @@ jobs:
       - name: Run Android lint
         run: ./gradlew --no-daemon --stacktrace -PwestPreview :app:lintDebug
 
-      - name: Build WEST APK
+      - name: Build WEST debug APK (CI verification)
         run: ./gradlew --no-daemon --stacktrace -PwestPreview :app:assembleDebug
 
       - name: Run Android instrumentation regression tests (manual only)
@@ -60,7 +60,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: ./gradlew --no-daemon --stacktrace -PwestPreview :app:connectedDebugAndroidTest
 
-      - name: Verify and package WEST APK
+      - name: Verify and package WEST debug APK
         shell: bash
         run: |
           set -euo pipefail
@@ -84,21 +84,21 @@ jobs:
             echo 'Multiple APKs generated, but no universal APK found.' >&2
             exit 1
           fi
-          cp "$apk" dist/WEST.apk
-          unzip -tq dist/WEST.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose dist/WEST.apk
-          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging dist/WEST.apk > dist/APK_BADGING.txt
+          cp "$apk" dist/WEST-debug.apk
+          unzip -tq dist/WEST-debug.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose dist/WEST-debug.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging dist/WEST-debug.apk > dist/APK_BADGING.txt
           grep -q "application-label:'WEST'" dist/APK_BADGING.txt || {
             echo 'The APK does not expose WEST as the application label.' >&2
             exit 1
           }
-          size=$(stat -c%s dist/WEST.apk)
+          size=$(stat -c%s dist/WEST-debug.apk)
           {
             echo "WEST build commit: $GITHUB_SHA"
-            echo 'Build variant: westPreview debug'
-            echo 'Artifact: WEST.apk'
+            echo 'Build variant: westPreview debug (CI verification only)'
+            echo 'Artifact: WEST-debug.apk'
             echo "APK size in bytes: $size"
-            echo 'Required size: greater than 25000000 bytes'
+            echo 'Required size: greater than 25000000 bytes (debug only)'
             echo 'JVM tests: passed (workflow gate)'
             echo 'Android lint: passed (workflow gate)'
             echo 'APK signature: verified'
@@ -108,7 +108,7 @@ jobs:
             exit 1
           fi
           git archive --format=zip --output=dist/WEST-Full-Source.zip HEAD
-          (cd dist && sha256sum WEST.apk WEST-Full-Source.zip > SHA256SUMS.txt)
+          (cd dist && sha256sum WEST-debug.apk WEST-Full-Source.zip > SHA256SUMS.txt)
 
       - name: Upload final WEST build
         uses: actions/upload-artifact@v4
@@ -137,7 +137,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build-and-test
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: write
     steps:
@@ -162,15 +162,31 @@ jobs:
           sdkmanager 'platforms;android-34' 'build-tools;34.0.0' 'platform-tools'
           chmod +x gradlew
 
-      - name: Build WEST APK
-        run: ./gradlew --no-daemon --stacktrace -PwestPreview :app:assembleDebug
+      - name: Decode release keystore from secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_KEYSTORE:-}" ]]; then
+            echo "RELEASE_KEYSTORE secret is not set. Cannot build a signed release." >&2
+            exit 1
+          fi
+          echo "$RELEASE_KEYSTORE" | base64 -d > release.keystore
+          echo "Keystore decoded: $(stat -c%s release.keystore) bytes"
+          ls -la release.keystore
 
-      - name: Locate the universal APK
+      - name: Build signed WEST release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew --no-daemon --stacktrace :app:assembleRelease
+
+      - name: Locate the signed release APK
         id: locate
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t apks < <(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | sort)
+          mapfile -t apks < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | sort)
           apk=''
           for candidate in "${apks[@]}"; do
             if [[ "$candidate" == *universal* ]]; then
@@ -182,27 +198,28 @@ jobs:
             apk="${apks[0]}"
           fi
           if [[ -z "$apk" ]]; then
-            echo 'No APK found for release.' >&2
+            echo 'No release APK found.' >&2
             exit 1
           fi
           tag="${GITHUB_REF#refs/tags/}"
           cp "$apk" "WEST-${tag}.apk"
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose "WEST-${tag}.apk" || true
-          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "WEST-${tag}.apk" > "BADGING-${tag}.txt" || true
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose "WEST-${tag}.apk"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "WEST-${tag}.apk" > "BADGING-${tag}.txt"
           size=$(stat -c%s "WEST-${tag}.apk")
           {
             echo "WEST ${tag} release APK"
             echo "Commit: $GITHUB_SHA"
-            echo "Build variant: westPreview debug"
+            echo "Build variant: release (signed, R8 minified, resources shrunk)"
             echo "APK size in bytes: $size"
             echo "Built at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo "Application ID: it.vfsfitvnm.vimusic"
           } > "RELEASE-${tag}.txt"
           (sha256sum "WEST-${tag}.apk" > "SHA256-${tag}.txt")
           echo "apk_path=$(pwd)/WEST-${tag}.apk" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "size=$size" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release and upload APK
+      - name: Create GitHub Release and upload signed APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.locate.outputs.tag }}
@@ -226,8 +243,9 @@ jobs:
             ## Build information
 
             - **Commit:** ${{ github.sha }}
-            - **Build variant:** westPreview debug
+            - **Build variant:** release (signed, R8 minified, resources shrunk)
             - **APK size:** ${{ steps.locate.outputs.size }} bytes
+            - **Application ID:** `it.vfsfitvnm.vimusic`
             - **License:** GPL-3.0
 
             WEST is an independent project, not affiliated with or endorsed by YouTube, YouTube Music, Google LLC or the ViMusic maintainers. All trademarks belong to their respective owners.
