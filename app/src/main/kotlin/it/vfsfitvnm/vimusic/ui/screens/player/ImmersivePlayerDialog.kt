@@ -63,17 +63,17 @@ internal fun ImmersivePlayerDialog(
     var showControls by rememberSaveable { mutableStateOf(true) }
     var showLyrics by rememberSaveable { mutableStateOf(false) }
     var scrubbingPosition by remember { mutableStateOf<Long?>(null) }
-    val artwork = mediaItem.mediaMetadata.artworkUri
-    val ambient = remember(artwork, context) {
-        ImageRequest.Builder(context).data(artwork).size(16, 16)
-            .precision(Precision.EXACT).build()
-    }
+    // Request one bounded, sharp source for both the backdrop and album cover.
+    // Do not upscale the tiny ambient thumbnail or use its cache entry.
+    val metrics = context.resources.displayMetrics
+    val artworkSize = maxOf(metrics.widthPixels, metrics.heightPixels).coerceIn(800, 1440)
+    val ambient = immersiveArtworkRequest(mediaItem, artworkSize)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         Box(Modifier.fillMaxSize().background(palette.background0)) {
-            // Load a tiny ambient image, not a second full-resolution bitmap.
+            // Reuse the same HD artwork request for the background and cover.
             AsyncImage(
                 model = ambient, contentDescription = null, contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().alpha(if (palette.isDark) 0.40f else 0.18f)
@@ -95,26 +95,30 @@ internal fun ImmersivePlayerDialog(
                     })
                 }
                 Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    Crossfade(targetState = mediaItem.mediaId,
-                        animationSpec = tween(durationMillis = if (reducedMotion) 0 else 300)) { mediaId ->
+                    Crossfade(targetState = mediaItem,
+                        animationSpec = tween(durationMillis = if (reducedMotion) 0 else 300)) { displayedItem ->
+                        val displayedArtwork = immersiveArtworkRequest(displayedItem, artworkSize)
                         Box(
                             Modifier.fillMaxWidth(0.94f).aspectRatio(1f)
                                 .clip(RoundedCornerShape(20.dp))
                                 .clickable { if (showLyrics) showLyrics = false else showControls = !showControls }
                         ) {
                             AsyncImage(
-                                model = artwork, contentDescription = "Current album artwork",
+                                model = displayedArtwork, contentDescription = "Current album artwork",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
                             Lyrics(
-                                mediaId = mediaId,
+                                mediaId = displayedItem.mediaId,
                                 isDisplayed = showLyrics,
                                 onDismiss = { showLyrics = false },
                                 size = 300.dp,
-                                mediaMetadataProvider = { mediaItem.mediaMetadata },
-                                durationProvider = { player.duration },
-                                ensureSongInserted = { Database.insert(mediaItem) }
+                                mediaMetadataProvider = { displayedItem.mediaMetadata },
+                                durationProvider = {
+                                    if (player.currentMediaItem?.mediaId == displayedItem.mediaId)
+                                        player.duration else C.TIME_UNSET
+                                },
+                                ensureSongInserted = { Database.insert(displayedItem) }
                             )
                         }
                     }
@@ -181,5 +185,19 @@ internal fun ImmersivePlayerDialog(
                 }
             }
         }
+    }
+}
+
+/** The same URL and decode size allow Coil to reuse its artwork cache. */
+@Composable
+private fun immersiveArtworkRequest(item: MediaItem, targetSize: Int): ImageRequest {
+    val context = LocalContext.current
+    val source = item.mediaMetadata.artworkUri?.toString()
+    return remember<ImageRequest>(context, source, targetSize) {
+        ImageRequest.Builder(context)
+            .data(source.thumbnail(targetSize))
+            .size(targetSize, targetSize)
+            .precision(Precision.EXACT)
+            .build()
     }
 }

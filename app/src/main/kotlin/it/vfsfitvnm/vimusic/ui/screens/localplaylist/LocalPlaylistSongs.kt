@@ -19,9 +19,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import it.vfsfitvnm.compose.persist.persist
 import it.vfsfitvnm.innertube.Innertube
@@ -63,6 +65,7 @@ import it.vfsfitvnm.vimusic.utils.forcePlayAtIndex
 import it.vfsfitvnm.vimusic.utils.forcePlayFromBeginning
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
@@ -76,6 +79,8 @@ fun LocalPlaylistSongs(
     val (colorPalette) = LocalAppearance.current
     val binder = LocalPlayerServiceBinder.current
     val menuState = LocalMenuState.current
+    val context = LocalContext.current
+    val shareScope = rememberCoroutineScope()
 
     var playlistWithSongs by persist<PlaylistWithSongs?>("localPlaylist/$playlistId/playlistWithSongs")
 
@@ -211,6 +216,19 @@ fun LocalPlaylistSongs(
                                                                 )
                                                             }?.let(Database::insertSongPlaylistMaps)
                                                     }
+                                                }
+                                            }
+                                        )
+                                    }
+
+                                    playlistWithSongs?.takeIf { it.songs.isNotEmpty() }?.let { snapshot ->
+                                        MenuEntry(
+                                            icon = R.drawable.share_social,
+                                            text = "Share playlist",
+                                            onClick = {
+                                                menuState.hide()
+                                                shareScope.launch {
+                                                    shareLocalPlaylist(context, snapshot)
                                                 }
                                             }
                                         )
