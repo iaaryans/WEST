@@ -6,6 +6,8 @@ on:
     branches:
       - main
       - west-fix
+    tags:
+      - 'v*'
   pull_request:
 
 permissions:
@@ -130,3 +132,110 @@ jobs:
             dist/BUILD_REPORT.txt
           if-no-files-found: ignore
           retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Check out WEST source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 and Gradle cache
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install required Android platform
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager 'platforms;android-34' 'build-tools;34.0.0' 'platform-tools'
+          chmod +x gradlew
+
+      - name: Build WEST APK
+        run: ./gradlew --no-daemon --stacktrace -PwestPreview :app:assembleDebug
+
+      - name: Locate the universal APK
+        id: locate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t apks < <(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | sort)
+          apk=''
+          for candidate in "${apks[@]}"; do
+            if [[ "$candidate" == *universal* ]]; then
+              apk="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$apk" && ${#apks[@]} -eq 1 ]]; then
+            apk="${apks[0]}"
+          fi
+          if [[ -z "$apk" ]]; then
+            echo 'No APK found for release.' >&2
+            exit 1
+          fi
+          tag="${GITHUB_REF#refs/tags/}"
+          cp "$apk" "WEST-${tag}.apk"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose "WEST-${tag}.apk" || true
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "WEST-${tag}.apk" > "BADGING-${tag}.txt" || true
+          size=$(stat -c%s "WEST-${tag}.apk")
+          {
+            echo "WEST ${tag} release APK"
+            echo "Commit: $GITHUB_SHA"
+            echo "Build variant: westPreview debug"
+            echo "APK size in bytes: $size"
+            echo "Built at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          } > "RELEASE-${tag}.txt"
+          (sha256sum "WEST-${tag}.apk" > "SHA256-${tag}.txt")
+          echo "apk_path=$(pwd)/WEST-${tag}.apk" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "size=$size" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release and upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.locate.outputs.tag }}
+          name: WEST ${{ steps.locate.outputs.tag }}
+          body: |
+            # WEST ${{ steps.locate.outputs.tag }}
+
+            Built automatically by GitHub Actions from tag `${{ steps.locate.outputs.tag }}`.
+
+            ## Installation
+
+            1. Download `WEST-${{ steps.locate.outputs.tag }}.apk` from the Assets section below.
+            2. Check the file with `sha256sum` and compare with `SHA256-${{ steps.locate.outputs.tag }}.txt`.
+            3. Open the APK on your device and allow installs from that source if Android asks.
+            4. Launch WEST.
+
+            ## In-app updates
+
+            Once this build is installed, future WEST updates will be detected and offered directly inside the app (Settings → About → Check for updates). No need to re-download APKs from GitHub manually.
+
+            ## Build information
+
+            - **Commit:** ${{ github.sha }}
+            - **Build variant:** westPreview debug
+            - **APK size:** ${{ steps.locate.outputs.size }} bytes
+            - **License:** GPL-3.0
+
+            WEST is an independent project, not affiliated with or endorsed by YouTube, YouTube Music, Google LLC or the ViMusic maintainers. All trademarks belong to their respective owners.
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          files: |
+            ${{ steps.locate.outputs.apk_path }}
+            SHA256-${{ steps.locate.outputs.tag }}.txt
+            BADGING-${{ steps.locate.outputs.tag }}.txt
+            RELEASE-${{ steps.locate.outputs.tag }}.txt
