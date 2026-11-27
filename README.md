@@ -11,13 +11,13 @@
 
 ## 1. Introduction
 
-> **Current source — WEST v0.5.7 (release candidate):** Based on merged upstream v0.5.6, this branch retains live release detection and adds the Immersive HD artwork fix. [PR CI run #38](https://github.com/iaaryans/WEST/actions/runs/45691944916) verified the previous updater code commit `c8e30e3`; v0.5.7 compilation, device-level visual verification and signed release-to-release installation are pending.
+> **Current source — WEST v0.5.8 (release candidate):** Based on merged upstream v0.5.7, this branch makes branded song cards the default and only song-share format, with a public track link when available. Fresh CI, signed release and real-device sharing tests are pending.
 
 WEST is an Android music client built with Kotlin and Jetpack Compose. It uses YouTube Music discovery and streaming, local playlists, a persistent Media3/ExoPlayer queue, lyrics, audio caching, and WEST-specific discovery and personalization features. WEST descends from [ViMusic](https://github.com/vfsfitvnm/ViMusic) and retains the applicable upstream copyright and GPL-3.0 obligations.
 
 **Repository and naming.** The upstream project is [iaaryans/WEST](https://github.com/iaaryans/WEST); contributions are developed in [adarsh01-cyber/WEST](https://github.com/adarsh01-cyber/WEST) and submitted as pull requests to upstream `main`. The Gradle root project is named `WEST`. The inherited Kotlin package and base application ID remain `it.vfsfitvnm.vimusic`; they are identifiers, not a second product name. Debug variants can append `.debug` or, with `-PwestPreview`, `.preview`.
 
-**Documentation baseline (26 November 2026).** Sections 1–19 describe the v0.5.7 candidate (`versionName 0.5.7`, `versionCode 23`), based on merged upstream v0.5.6. The Gradle version is a source version, not evidence of release publication. Section 20 preserves historical implementation and CI notes. “Implemented” means a wired code path, not device-level certification.
+**Documentation baseline (26 November 2026).** Sections 1–19 describe the v0.5.8 candidate (`versionName 0.5.8`, `versionCode 24`), based on merged upstream v0.5.7. The Gradle version is a source version, not evidence of release publication. Section 20 preserves historical implementation and CI notes.
 
 ## 2. Overview
 
@@ -26,7 +26,7 @@ WEST is an Android music client built with Kotlin and Jetpack Compose. It uses Y
 | Product / Gradle root project | WEST | `settings.gradle.kts` |
 | Base application ID / namespace | `it.vfsfitvnm.vimusic` | `app/build.gradle.kts` |
 | Debug application IDs | `it.vfsfitvnm.vimusic.debug` normally; `it.vfsfitvnm.vimusic.preview` with `-PwestPreview` | `app/build.gradle.kts` |
-| Source version | `0.5.7` (`versionCode 23`) | `app/build.gradle.kts` |
+| Source version | `0.5.8` (`versionCode 24`) | `app/build.gradle.kts` |
 | minSdk / targetSdk / compileSdk | 21 / 34 / 34 | `app/build.gradle.kts` |
 | Toolchain | JDK 17, Android Gradle Plugin 7.3.0, Gradle wrapper 7.4 | Build files and CI |
 | Gradle modules | 7 (`app` and six support libraries) | `settings.gradle.kts` |
@@ -57,6 +57,7 @@ The table describes **features wired in this source branch**, not a full device-
 | Immersive player | Expanded playback surface with size-aware 800–1440 px artwork requests shared by backdrop and cover, animated controls and reduced-motion support; original artwork quality limits clarity | `ui/screens/player/ImmersivePlayerDialog.kt`, `ui/screens/settings/AppearanceSettings.kt` |
 | Artwork / browsing performance | Size-aware artwork requests, shared browse caches, time-bounded LRU policies and scroll-aware deferred artwork work; **not** a guarantee of zero jank | `ui/performance/HomeArtworkPolicy.kt`, `MusicBrowseCache.kt`, `ui/screens/home/MoodspaceScreen.kt` |
 | Local library | Favorites, local playlists, albums/artists, library reordering and playlist import entry points | `Database.kt`, `ui/screens/home/HomePlaylists.kt`, `ui/screens/localplaylist/` |
+| Song card sharing | Every song-share action generates a branded 1080 × 1350 PNG with album artwork, title, artist and a valid public track link when available; no link-only choice or silent text-only fallback. Some receiving apps ignore captions | `sharing/SongShareCard.kt`, `ui/components/themed/MediaItemMenu.kt` |
 | Local playlist sharing | Three-dot menu shares the ordered track list and valid YouTube Music track links using Android's share sheet; very large playlists use a text attachment. No hosted public WEST playlist URL or one-tap import is implied | `ui/screens/localplaylist/LocalPlaylistSongs.kt`, `PlaylistShare.kt` |
 | Spotify import | Public-playlist link import and track matching to catalog results, with review/unmatched-item handling; unofficial Spotify endpoints can change | `spotify/SpotifyImporter.kt`, `TrackMatcher.kt`, `ui/screens/spotify/SpotifyImportScreen.kt` |
 | Listening Insights / WEST Wrapped | Recorded listening sessions, trends, streaks, top tracks/artists/albums, calendar heatmap and shareable annual summary with official WEST wordmark | `listening/` |
@@ -304,9 +305,9 @@ Clone the upstream repository for the merged source, or check out the contributi
 ```bash
 git clone https://github.com/iaaryans/WEST.git
 cd WEST
-# For the v0.5.7 contribution branch only:
-git fetch https://github.com/adarsh01-cyber/WEST.git immersive-hd-v0.5.7
-git switch -c immersive-hd-v0.5.7 FETCH_HEAD
+# For the v0.5.8 contribution branch only:
+git fetch https://github.com/adarsh01-cyber/WEST.git song-share-card-v0.5.8
+git switch -c song-share-card-v0.5.8 FETCH_HEAD
 ./gradlew --no-daemon -PwestPreview :app:testDebugUnitTest :innertube:test :kugou:test :app:lintDebug :app:assembleDebug
 ```
 
@@ -384,7 +385,7 @@ For live playback, UI smoothness, search/queue navigation and crash regressions,
 
 ## 14. Release and deployment
 
-The v0.5.7 candidate declares `versionName 0.5.7` / `versionCode 23`. Its base, merged upstream v0.5.6, declares version code 22. Historical beta files and checksums do not identify the current APK.
+The v0.5.8 candidate declares `versionName 0.5.8` / `versionCode 24`. Its base, merged upstream v0.5.7, declares version code 23. Historical beta files and checksums do not identify the current APK.
 
 | Distribution channel | Current status |
 | --- | --- |
@@ -565,3 +566,8 @@ The maintainer confirmed the supplied GLM release APK (`WEST (4).apk`) is verifi
 - Immersive cover and backdrop now use the same size-aware 800–1440 px artwork request for cache reuse, replacing the 16 px backdrop request. Crossfade retains the matching artwork and lyrics metadata for each media item. Controls, gradient and reduced-motion behavior remain in place.
 - Source: `ui/screens/player/ImmersivePlayerDialog.kt`. Validate compilation, lint, playback controls, lyrics, next/previous transitions, visual clarity and memory/frame pacing on a device. Install the compatible signed v0.5.6 production APK before testing update discovery and installation from a published v0.5.7 release. No v0.5.7 CI or release publication is claimed yet.
 - Local playlists now expose **Share playlist** in the three-dot menu. The Android share sheet sends the playlist name, ordered song titles/artists and valid YouTube Music links; very large playlists are shared as a text file via the existing cache FileProvider. No private track IDs, audio files, listening history or remote playlist creation are involved. Empty playlists do not show the option. JVM formatting tests added; fresh CI and real-device sharing verification pending.
+
+### WEST v0.5.8 — Always-on song share cards (release candidate)
+
+- Tapping the song share icon directly generates a 1080 × 1350 PNG and opens the Android share sheet with the image and song link in the caption when available. No link-only option. The card includes album artwork, artwork-derived dark gradient, official WEST wordmark, title, artist and visible public link. A designed placeholder is rendered if artwork is unavailable. If image generation fails, an error is shown rather than sending text alone. Receiving apps may ignore captions; private/non-catalog IDs are never exposed.
+- Uses existing Coil, Palette, Android Canvas and cache FileProvider; no new permissions or service. JVM tests cover public links, captions and metadata fallback. Fresh CI and real-device share verification pending.

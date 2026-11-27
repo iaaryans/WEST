@@ -1,6 +1,6 @@
 package it.vfsfitvnm.vimusic.ui.components.themed
 
-import android.content.Intent
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentScope
@@ -30,6 +30,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,6 +57,7 @@ import it.vfsfitvnm.vimusic.models.SongPlaylistMap
 import it.vfsfitvnm.vimusic.query
 import it.vfsfitvnm.vimusic.transaction
 import it.vfsfitvnm.vimusic.ui.items.SongItem
+import it.vfsfitvnm.vimusic.sharing.SongShareCard
 import it.vfsfitvnm.vimusic.ui.screens.albumRoute
 import it.vfsfitvnm.vimusic.ui.screens.artistRoute
 import it.vfsfitvnm.vimusic.ui.styling.Dimensions
@@ -72,6 +74,8 @@ import it.vfsfitvnm.vimusic.utils.semiBold
 import it.vfsfitvnm.vimusic.utils.thumbnail
 import kotlin.system.measureTimeMillis
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 
@@ -205,6 +209,8 @@ fun BaseMediaItemMenu(
     onRemoveFromQuickPicks: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val shareScope = rememberCoroutineScope()
+    var sharingCard by remember(mediaItem.mediaId) { mutableStateOf(false) }
 
     MediaItemMenu(
         mediaItem = mediaItem,
@@ -233,16 +239,22 @@ fun BaseMediaItemMenu(
         onGoToAlbum = albumRoute::global,
         onGoToArtist = artistRoute::global,
         onShare = {
-            val sendIntent = Intent().apply {
-                action = Intent.ACTION_SEND
-                type = "text/plain"
-                putExtra(
-                    Intent.EXTRA_TEXT,
-                    "https://music.youtube.com/watch?v=${mediaItem.mediaId}"
-                )
+            if (!sharingCard) {
+                sharingCard = true
+                Toast.makeText(context, "Preparing song card…", Toast.LENGTH_SHORT).show()
+                shareScope.launch {
+                    try {
+                        SongShareCard.share(context, mediaItem)
+                        onDismiss()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Couldn't create song card. Please try again.", Toast.LENGTH_SHORT).show()
+                    } finally {
+                        sharingCard = false
+                    }
+                }
             }
-
-            context.startActivity(Intent.createChooser(sendIntent, null))
         },
         onRemoveFromQuickPicks = onRemoveFromQuickPicks,
         modifier = modifier
