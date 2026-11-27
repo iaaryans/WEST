@@ -56,11 +56,13 @@ jobs:
           done
           if [[ -z "$apk" && ${#apks[@]} -eq 1 ]]; then apk="${apks[0]}"; fi
           test -n "$apk"
-          cp "$apk" dist/WEST-v0.5.8-release.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose dist/WEST-v0.5.8-release.apk
-          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging dist/WEST-v0.5.8-release.apk > dist/APK_BADGING.txt
-          grep -q "package: name='it.vfsfitvnm.vimusic'" dist/APK_BADGING.txt
-          (cd dist && sha256sum WEST-v0.5.8-release.apk > SHA256SUMS.txt)
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$apk" > dist/APK_BADGING.txt
+          grep -q "^package: name='it.vfsfitvnm.vimusic'" dist/APK_BADGING.txt
+          version=$(sed -n "s/^package: .*versionName='\([^']*\)'.*/\1/p" dist/APK_BADGING.txt)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          cp "$apk" "dist/WEST-v${version}-release.apk"
+          (cd dist && sha256sum "WEST-v${version}-release.apk" > SHA256SUMS.txt)
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
