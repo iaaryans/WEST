@@ -164,6 +164,8 @@ jobs:
 
       - name: Decode release keystore from secret
         shell: bash
+        env:
+          RELEASE_KEYSTORE: ${{ secrets.RELEASE_KEYSTORE }}
         run: |
           set -euo pipefail
           if [[ -z "${RELEASE_KEYSTORE:-}" ]]; then
