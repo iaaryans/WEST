@@ -1,0 +1,69 @@
+name: WEST - Optional Emulator Tests
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instrumentation:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out WEST source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 and Gradle cache
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install required Android platform
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager 'platforms;android-34' 'build-tools;34.0.0' 'platform-tools'
+          chmod +x gradlew
+
+      - name: Enable KVM acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo 'KVM is unavailable on this runner. Use a KVM-capable runner for emulator tests.' >&2
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo udevadm settle
+          test -r /dev/kvm && test -w /dev/kvm
+
+      - name: Run Android instrumentation regression tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: ./gradlew --no-daemon --stacktrace -PwestPreview :app:connectedDebugAndroidTest
+
+      - name: Upload instrumentation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WEST-Emulator-Diagnostics
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          if-no-files-found: ignore
+          retention-days: 14

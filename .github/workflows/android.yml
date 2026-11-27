@@ -48,18 +48,6 @@ jobs:
       - name: Build WEST debug APK (CI verification)
         run: ./gradlew --no-daemon --stacktrace -PwestPreview :app:assembleDebug
 
-      - name: Run Android instrumentation regression tests (manual only)
-        if: github.event_name == 'workflow_dispatch'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
-          script: ./gradlew --no-daemon --stacktrace -PwestPreview :app:connectedDebugAndroidTest
-
       - name: Verify and package WEST debug APK
         shell: bash
         run: |
