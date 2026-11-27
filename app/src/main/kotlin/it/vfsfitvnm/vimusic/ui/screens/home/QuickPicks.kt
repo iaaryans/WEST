@@ -40,6 +40,7 @@ import it.vfsfitvnm.vimusic.ui.performance.SmoothArtwork
 import it.vfsfitvnm.vimusic.ui.performance.HomeRelatedFeedCache
 import it.vfsfitvnm.vimusic.ui.performance.rememberPressMotion
 import it.vfsfitvnm.vimusic.ui.components.themed.HeaderIconButton
+import it.vfsfitvnm.vimusic.ui.components.themed.IconButton
 import it.vfsfitvnm.vimusic.ui.components.themed.NonQueuedMediaItemMenu
 import it.vfsfitvnm.vimusic.ui.items.AlbumItem
 import it.vfsfitvnm.vimusic.ui.items.ArtistItem
@@ -498,12 +499,18 @@ private fun HomeNowPlayingShelf() {
         Box(Modifier.weight(1f)) {
             HomeSongRow(item, art)
         }
-        ActionLabel(if (playing) "Pause" else "Resume") {
-            if (playing) player.pause() else player.run {
-                if (playbackState == Player.STATE_ENDED) seekToDefaultPosition()
-                if (playbackState == Player.STATE_IDLE) prepare()
-                play()
+        IconButton(
+            icon = if (playing) R.drawable.pause else R.drawable.play,
+            color = palette.text,
+            description = if (playing) "Pause" else "Play",
+            modifier = Modifier.padding(12.dp).size(24.dp),
+            onClick = {
+                if (playing) player.pause() else player.run {
+                    if (playbackState == Player.STATE_ENDED) seekToDefaultPosition()
+                    if (playbackState == Player.STATE_IDLE) prepare()
+                    play()
+                }
             }
-        }
+        )
     }
 }
