@@ -193,7 +193,7 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                 stateSaver = Appearance.Companion
             ) {
                 with(preferences) {
-                    val colorPaletteName = getEnum(colorPaletteNameKey, ColorPaletteName.Default)
+                    val colorPaletteName = getEnum(colorPaletteNameKey, ColorPaletteName.Dynamic)
                     val colorPaletteMode = getEnum(colorPaletteModeKey, ColorPaletteMode.System)
                     val thumbnailRoundness =
                         getEnum(thumbnailRoundnessKey, ThumbnailRoundness.Light)
@@ -263,7 +263,7 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                                 val colorPaletteName =
                                     sharedPreferences.getEnum(
                                         colorPaletteNameKey,
-                                        ColorPaletteName.Default
+                                        ColorPaletteName.Dynamic
                                     )
 
                                 val colorPaletteMode =
@@ -316,7 +316,7 @@ class MainActivity : ComponentActivity(), PersistMapOwner {
                 with(preferences) {
                     registerOnSharedPreferenceChangeListener(listener)
 
-                    val colorPaletteName = getEnum(colorPaletteNameKey, ColorPaletteName.Default)
+                    val colorPaletteName = getEnum(colorPaletteNameKey, ColorPaletteName.Dynamic)
                     if (colorPaletteName == ColorPaletteName.Dynamic) {
                         setDynamicPalette(getEnum(colorPaletteModeKey, ColorPaletteMode.System))
                     }
