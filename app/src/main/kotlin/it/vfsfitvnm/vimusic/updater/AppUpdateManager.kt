@@ -82,6 +82,7 @@ object AppUpdateManager {
                     }
                 } else {
                     _state.value = UpdateUiState.UpToDate
+                    if (!manual) _promptVisible.value = false
                 }
                 app.preferences.edit {
                     putLong(PREF_LAST_CHECK_MS, System.currentTimeMillis())

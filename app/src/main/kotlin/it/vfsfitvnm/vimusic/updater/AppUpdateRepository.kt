@@ -1,6 +1,7 @@
 package it.vfsfitvnm.vimusic.updater
 
 import android.content.Context
+import androidx.core.content.pm.PackageInfoCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -47,11 +48,31 @@ internal class AppUpdateRepository {
                 tmpFile.copyTo(finalFile, overwrite = true)
                 tmpFile.delete()
             }
+            validateDownloadedApk(context, release, finalFile)
             finalFile
         } catch (t: Throwable) {
             tmpFile.delete()
+            finalFile.delete()
             throw t
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun validateDownloadedApk(context: Context, release: WestRelease, file: File) {
+        val pm = context.packageManager
+        val installed = pm.getPackageInfo(context.packageName, 0)
+        val archive = pm.getPackageArchiveInfo(file.absolutePath, 0)
+            ?: throw IOException("Downloaded file is not a valid Android APK")
+        if (archive.packageName != context.packageName) {
+            throw IOException("Downloaded APK belongs to a different application")
+        }
+        WestVersion.validateApkVersion(
+            installedName = installed.versionName ?: throw IOException("Installed version is unavailable"),
+            installedCode = PackageInfoCompat.getLongVersionCode(installed),
+            releaseName = release.version,
+            apkName = archive.versionName,
+            apkCode = PackageInfoCompat.getLongVersionCode(archive)
+        )
     }
 
     fun updatesDir(context: Context): File =

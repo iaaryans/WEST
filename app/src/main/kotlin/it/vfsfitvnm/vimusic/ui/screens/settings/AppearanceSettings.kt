@@ -38,7 +38,7 @@ import it.vfsfitvnm.vimusic.utils.useSystemFontKey
 fun AppearanceSettings() {
     val (colorPalette) = LocalAppearance.current
 
-    var colorPaletteName by rememberPreference(colorPaletteNameKey, ColorPaletteName.Default)
+    var colorPaletteName by rememberPreference(colorPaletteNameKey, ColorPaletteName.Dynamic)
     var colorPaletteMode by rememberPreference(colorPaletteModeKey, ColorPaletteMode.System)
     var thumbnailRoundness by rememberPreference(
         thumbnailRoundnessKey,

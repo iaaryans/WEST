@@ -1,9 +1,6 @@
 package it.vfsfitvnm.vimusic.ui.screens.home
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
@@ -14,12 +11,9 @@ import it.vfsfitvnm.vimusic.intelligence.IntelligenceSnapshot
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import it.vfsfitvnm.vimusic.LocalPlayerServiceBinder
-import it.vfsfitvnm.vimusic.intelligence.IntelligencePreferences
 import it.vfsfitvnm.vimusic.intelligence.RecommendationRepository
-import it.vfsfitvnm.vimusic.intelligence.RecommendedSong
 import it.vfsfitvnm.vimusic.ui.styling.Dimensions
 import it.vfsfitvnm.vimusic.utils.asMediaItem
 import it.vfsfitvnm.vimusic.utils.preferences
@@ -41,7 +35,6 @@ internal fun rememberIntelligenceFeed(store: HomeFeedStore): State<IntelligenceS
 /** Each recommendation shelf is its own vertical lazy item. */
 @Composable
 internal fun IntelligenceSection(state: IntelligenceSnapshot, width: Dp, rediscover: Boolean) {
-    val prefs = LocalContext.current.preferences
     if (!state.enabled) return
     val binder = LocalPlayerServiceBinder.current
     val art = Dimensions.thumbnails.song
@@ -55,12 +48,6 @@ internal fun IntelligenceSection(state: IntelligenceSnapshot, width: Dp, redisco
         if (rediscover) "Songs worth hearing again" else "Your evolving listening profile")
     HomeSongPages(pages, width, { it.song.id }) { entry ->
         HomeSongRow(song = entry.song, thumbnailSize = art,
-            modifier = Modifier.clickable { binder?.playSmartQueue(entry.song.asMediaItem, queue) },
-            trailingContent = {
-                Row {
-                    ActionLabel("More") { IntelligencePreferences.favor(prefs, entry.song.id) }
-                    ActionLabel("Less") { IntelligencePreferences.suppress(prefs, entry.song.id) }
-                }
-            })
+            modifier = Modifier.clickable { binder?.playSmartQueue(entry.song.asMediaItem, queue) })
     }
 }
